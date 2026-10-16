@@ -31,7 +31,9 @@ logger = logging.getLogger("runnerconsole.realtime.console_tail")
 
 SNAPSHOT_WINDOW_BYTES = 64 * 1024  # snapshot 读取文件尾的窗口大小
 POLL_INTERVAL_S = 0.5              # tail 线程轮询间隔
-MAX_SUBSCRIBERS_PER_LOOP = 2       # 单 loop 订阅上限（第 3 个被拒绝）
+MAX_SUBSCRIBERS_PER_LOOP = 8       # 单 loop 订阅上限（运行台 + 任务中心 + 多标签页；
+                                   # 客户端断开后服务端最长一个心跳周期才释放旧订阅，
+                                   # 上限太小会误伤正常切换场景并触发 end）
 QUEUE_CAPACITY = 256               # 订阅者队列深度（约 128s 背压缓冲）
 
 # 队列哨兵：文件被清理/重建，订阅方应重置游标并重新 snapshot

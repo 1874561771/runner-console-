@@ -189,6 +189,23 @@ const mockRoutes = {
     return { items: mock.mockAudit.slice(offset, offset + limit), total: mock.mockAudit.length };
   },
   "GET /api/admin/users": () => mock.mockUsers,
+  /* ── 在线编辑 / 新建上传文件（资源页编辑器，mock 演示）──────── */
+  "GET /api/uploads/:id/content": (_body, p) => {
+    const u = mock.mockUploads.find((x) => x.id === p.id);
+    if (!u) return { error: "upload not found" };
+    return `# ${u.name}\n# （mock 演示内容）\nscripts/firebox/demo/fbox_demo_login.py\n`;
+  },
+  "PUT /api/uploads/:id/content": () => ({ ok: true }),
+  "POST /api/uploads/text": (b) => {
+    const name = (b.name || "").trim() || "untitled.txt";
+    const u = {
+      id: "up-" + Date.now(), name,
+      kind: /\.py$/i.test(name) ? "script" : "suite",
+      relpath: name, owner_name: "wyj", uploaded_at: mock.now(),
+    };
+    mock.mockUploads.unshift(u);
+    return u;
+  },
 };
 
 function matchMockRoute(method, path) {

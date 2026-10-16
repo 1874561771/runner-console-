@@ -374,7 +374,8 @@ function renderOverview(body) {
   const banners = [];
   if (l.stop_reason) banners.push(`<div class="rc-banner warn">停止原因：${esc(l.stop_reason)}</div>`);
   if (l.failed_reason) banners.push(`<div class="rc-banner fail">失败原因：${esc(l.failed_reason)}</div>`);
-  const latest = [...(l.jobs || [])].reverse().find((j) => j.run_id);
+  const runs = (l.jobs || []).filter((j) => j.run_id);
+  const latest = runs.length ? runs[runs.length - 1] : null;
   body.innerHTML = `
     <div class="rc-tabpad">
       <div class="rc-meta">
@@ -385,10 +386,39 @@ function renderOverview(body) {
       </div>
       ${banners.join("") || `<div class="rc-note-plain">本次运行无停止 / 失败原因记录。</div>`}
       ${latest ? `
+        <div class="rc-cases-head" style="margin-top:16px">
+          <div class="rc-cmd-label" style="margin:0">运行结果</div>
+          <span class="rc-spacer"></span>
+          ${runs.length > 1 ? `<select class="select rc-run-select" id="rc-ov-run" title="loop 多轮时选择要查看的轮次">
+            ${runs.map((j) => `<option value="${esc(j.run_id)}" ${j === latest ? "selected" : ""}>第 ${j.iteration} 轮 · ${esc(j.run_id)} · ${esc(j.status)}</option>`).join("")}
+          </select>` : `<span class="faint mono" style="font-size:11.5px">run ${esc(latest.run_id)}</span>`}
+        </div>
+        <table class="table">
+          <thead><tr><th>Case</th><th>Result</th><th>Duration</th><th>Message</th><th></th></tr></thead>
+          <tbody id="rc-cases-body"><tr><td colspan="5"><div class="rc-cases-empty">加载中…</div></td></tr></tbody>
+        </table>
         <div class="rc-cmd-label">材料 · Run ${esc(latest.run_id)}</div>
-        <div id="rc-art-list"><div class="rc-cases-empty">加载中…</div></div>` : ""}
+        <div id="rc-art-list"><div class="rc-cases-empty">加载中…</div></div>`
+      : `<div class="rc-note-plain">尚无已完成的 run——iteration 结束后这里会显示 case 结果与材料。</div>`}
     </div>`;
-  if (latest) loadArtifacts(latest.run_id);
+  if (!latest) return;
+  const sel = $("#rc-ov-run", body);
+  if (sel) sel.addEventListener("change", (e) => loadOverviewCases(e.target.value));
+  loadOverviewCases(latest.run_id);
+  loadArtifacts(latest.run_id);
+}
+
+/* 概览内的 case 结果（loop 多轮时随轮次下拉切换） */
+async function loadOverviewCases(runId) {
+  const tbody = $("#rc-cases-body");
+  if (!tbody) return;
+  let cases = [];
+  try {
+    const data = await (await apiFetch(`/api/runs/${encodeURIComponent(runId)}`)).json();
+    if (Array.isArray(data?.cases)) cases = data.cases;
+  } catch { cases = []; }
+  if (!tbody.isConnected) return; // 已切走
+  renderCasesBody(cases);
 }
 
 /* 材料清单（概览内联）：
@@ -492,7 +522,8 @@ async function loadArtifacts(runId) {
   const fileUrl = (rel) => `/runs/${encodeURIComponent(runId)}/${rel.split("/").map(encodeURIComponent).join("/")}`;
   const byKind = {};
   for (const f of files) (byKind[f.kind] = byKind[f.kind] || []).push(f);
-  const KIND_ORDER = ["job_log", "summary_html", "summary_json", "run_meta", "case_log", "screenshot", "support_tgz", "config", "other"];
+  // summary.html/json 不在列表中显示（tab 右上角已有 summary.html 入口，JSON 可经下载取得）
+  const KIND_ORDER = ["job_log", "run_meta", "case_log", "screenshot", "support_tgz", "config", "other"];
   list.innerHTML = KIND_ORDER.filter((k) => byKind[k]?.length).map((k) => `
     <div class="rc-art-group" data-kind="${esc(k)}">
       <div class="rc-art-kind">${esc(ARTIFACT_KIND_LABEL[k] || k)} <span class="faint">(${byKind[k].length})</span></div>
@@ -888,5 +919,8 @@ function renderRecentList() {
 /* 点击最近任务 / URL 参数：绑定指定 loop 并在右侧显示详情 */
 async function showLoop(id) {
   await bindLoopById(id);
-  renderRecentList();
+  // 最近任务列表可能落后（如刚发起的 loop 不在 render 时拉取的列表里）
+  fetchJson("/api/loops", []).then((ls) => {
+    if (Array.isArray(ls) && ls.length) { state.loops = ls; renderRecentList(); }
+  });
 }

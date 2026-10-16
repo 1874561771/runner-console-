@@ -233,6 +233,9 @@ async function loadUploads() {
       <span class="faint" style="font-size:11.5px">.py 识别为脚本（script），其余识别为 suite；可多选</span>
     </div>
     <input type="file" id="up-file" multiple hidden/>
+    <div style="margin:10px 0">
+      <button type="button" class="btn btn-ghost btn-sm" id="up-new">＋ 新建文件</button>
+    </div>
     <div id="up-list"></div>`;
 
   /* 上传区交互：点击 / 拖拽 */
@@ -260,6 +263,7 @@ async function loadUploads() {
           <td><span class="badge ${u.kind === "script" ? "warn" : "running"}">${esc(u.kind)}</span></td>
           <td class="mono faint">${esc(u.uploaded_at || "")}</td>
           <td><div class="row-actions">
+            <button type="button" class="btn btn-ghost btn-sm" data-edit="${u.id}">编辑</button>
             <button type="button" class="btn btn-danger btn-sm" data-del="${u.id}">删除</button>
           </div></td>
         </tr>`).join("")}</tbody></table></div>`
@@ -284,6 +288,66 @@ async function loadUploads() {
         loadUploads();
       } catch (err) { toast(err.message || "删除失败", "error"); }
     }));
+
+  /* 在线编辑已有文件 */
+  list.querySelectorAll("[data-edit]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const u = uploads.find((x) => x.id === btn.dataset.edit);
+      if (u) openUploadEditor(u);
+    }));
+
+  body.querySelector("#up-new").addEventListener("click", () => openUploadEditor(null));
+}
+
+/* 在线新建 / 编辑上传文件（suite / script 均为 UTF-8 文本） */
+function openUploadEditor(u) {
+  const isEdit = !!u;
+  const m = openModal({
+    title: isEdit ? `编辑文件 · ${u.name}` : "新建文件",
+    body: `
+      ${isEdit ? "" : `<div class="field"><label>文件名 <span class="faint">（.py 识别为脚本，其余为 suite）</span></label>
+        <input class="input mono" id="ue-name" placeholder="regression-test.txt"/></div>`}
+      <div class="field"><label>内容</label>
+        <textarea class="input mono" id="ue-content" rows="14" spellcheck="false"
+          style="font-size:12px;line-height:1.6" placeholder="每行一个 case 脚本路径（suite）；# 开头为注释"></textarea></div>`,
+    footer: `<button type="button" class="btn btn-ghost" data-act="cancel">取消</button>
+             <button type="button" class="btn btn-primary" data-act="save">保存</button>`,
+    width: 640,
+  });
+
+  if (isEdit) {
+    (async () => {
+      try {
+        const res = await apiFetch(`/api/uploads/${u.id}/content`);
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d.error || d.detail || "加载失败");
+        }
+        const ta = m.root.querySelector("#ue-content");
+        ta.value = await res.text();
+      } catch (err) { toast(err.message || "内容加载失败", "error"); }
+    })();
+  }
+
+  m.root.querySelector('[data-act="cancel"]').addEventListener("click", m.close);
+  m.root.querySelector('[data-act="save"]').addEventListener("click", async () => {
+    const content = m.root.querySelector("#ue-content").value;
+    try {
+      const res = await apiFetch(isEdit ? `/api/uploads/${u.id}/content` : "/api/uploads/text", {
+        method: isEdit ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(isEdit ? { content } : {
+          name: m.root.querySelector("#ue-name").value.trim(),
+          content,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok || d.error) throw new Error(d.error || "保存失败");
+      m.close();
+      toast(isEdit ? "已保存" : `已创建 ${d.name}`);
+      loadUploads();
+    } catch (err) { toast(err.message || "保存失败", "error"); }
+  });
 }
 
 /* form-data 上传（.py → script，其余 → suite） */

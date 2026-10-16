@@ -16,6 +16,8 @@ import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel
+from fastapi.responses import PlainTextResponse
 
 from app.api.common import console_dir, fmt_dt
 from app.api.deps import get_current_user
@@ -24,6 +26,13 @@ from app.db import pool
 from app.db.dao import audit as audit_dao
 
 router = APIRouter(prefix="/api")
+
+
+class UploadTextIn(BaseModel):
+    """POST /api/uploads/text（新建文本文件）与 PUT content 的请求体。"""
+
+    name: str | None = None
+    content: str
 
 _UPLOAD_SELECT = (
     "SELECT up.*, u.username AS owner_name "
@@ -110,3 +119,87 @@ def delete_upload(upload_id: str, user: dict = Depends(get_current_user)) -> dic
         {"upload_id": upload_id, "name": row["name"], "operator": user["username"]},
     )
     return {"ok": True}
+
+
+# ------------------------------------------------- 在线查看 / 编辑 / 新建
+
+def _upload_file_path(row: dict) -> Path:
+    return console_dir() / "uploads" / str(row["relpath"])
+
+
+def _editable(row: dict) -> bool:
+    """suite / script 都是文本文件，可在线查看与编辑。"""
+    return row.get("kind") in ("suite", "script")
+
+
+@router.get("/uploads/{upload_id}/content")
+def get_upload_content(upload_id: str, user: dict = Depends(get_current_user)) -> PlainTextResponse:
+    row = _upload_row(upload_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="上传件不存在")
+    if not perms.can_access_owner(user, row.get("owner_id")):
+        raise HTTPException(status_code=403, detail="forbidden")
+    if not _editable(row):
+        raise HTTPException(status_code=400, detail="该类型不支持在线查看")
+    path = _upload_file_path(row)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="文件不存在（已被清理）")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="文件不是 UTF-8 文本，无法在线查看")
+    return PlainTextResponse(text)
+
+
+@router.put("/uploads/{upload_id}/content")
+def save_upload_content(upload_id: str, body: UploadTextIn, user: dict = Depends(get_current_user)) -> dict:
+    row = _upload_row(upload_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="上传件不存在")
+    if not perms.can_access_owner(user, row.get("owner_id")):
+        raise HTTPException(status_code=403, detail="forbidden")
+    if not _editable(row):
+        raise HTTPException(status_code=400, detail="该类型不支持在线编辑")
+    path = _upload_file_path(row)
+    try:
+        path.write_text(body.content.replace("\r\n", "\n"), encoding="utf-8")
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"文件保存失败: {exc}") from exc
+    audit_dao.insert_audit(
+        user["id"],
+        "upload.edit",
+        {"upload_id": upload_id, "name": row["name"], "operator": user["username"]},
+    )
+    return {"ok": True}
+
+
+@router.post("/uploads/text", status_code=201)
+def create_upload_text(body: UploadTextIn, user: dict = Depends(get_current_user)) -> dict:
+    """在线新建文本文件（suite / 脚本）。"""
+    name = Path(body.name or "").name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="文件名不能为空")
+    if any(c in name for c in '\\/:*?"<>|'):
+        raise HTTPException(status_code=400, detail="文件名含非法字符")
+    kind = "script" if name.lower().endswith(".py") else "suite"
+
+    uid = secrets.token_hex(6)
+    rel = f"{user['username']}/{uid}/{name}"
+    dest = console_dir() / "uploads" / rel
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(body.content.replace("\r\n", "\n"), encoding="utf-8")
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"文件保存失败: {exc}") from exc
+
+    pool.execute(
+        "INSERT INTO uploads (id, owner_id, kind, name, relpath, created_at) "
+        "VALUES (%s, %s, %s, %s, %s, NOW(3))",
+        (uid, user["id"], kind, name, rel),
+    )
+    audit_dao.insert_audit(
+        user["id"],
+        "upload.create",
+        {"upload_id": uid, "kind": kind, "name": name, "operator": user["username"], "via": "editor"},
+    )
+    return _upload_view(_upload_row(uid))
