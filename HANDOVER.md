@@ -142,6 +142,14 @@ copy config.example.toml config.toml   # 填 [database]、[paths]（workdir=D:/U
 浏览器 `http://127.0.0.1:8765/`（真实后端）+ `python -m http.server 8080` 开 `frontend/?mock=1`（对照用）。
 对照 Ardot 三屏（文件 736602918319197）：运行台渐进披露表单 → 发起任务 → 任务中心行点击 Inspector → 控制台 SSE 滚动 → 看板统计。1366/1920 两档宽度。
 
+> **材料区改造（2026-10-16，用户反馈，CodeBuddy 追加）**
+>
+> 1. job/case log 不再跳转：点击条目在运行台内嵌展开深色终端风格查看器（同时只展开一个，再点收起/点另一条切换），懒加载 /runs/<run_id>/<relpath>，超 5000 行截断提示下载原文件。
+> 2. **step 高亮**（按 runner 侧 ui_automation.step 日志格式）：`START` 行橙底左条、`PASS` 绿、`FAIL`/`[ERROR]`/Traceback 红（异常块红背景）、`Saved screenshot` 蓝色、`=== StepN ===`（Job setup）与 CASE/RESULT/duration 结构行灰色加粗。
+> 3. 配置/支持包/汇总 JSON/运行元数据 → 直接下载；summary.html → 新窗口渲染。
+> 4. 截图：缩略图网格（128×80 裁切），点击弹层放大（深色遮罩 + 原图），**点遮罩空白处关闭**（点图片本身不关）。
+> - 验证数据：手工构造符合 runner 契约的演示 run（20261016123000，含 2 step pass / 1 fail / 2 截图）走 ingest 真实入库，端到端全部通过。
+
 > **运行台交互重构（2026-10-16，用户实测 6 项反馈，CodeBuddy 追加）**
 >
 > | # | 反馈 | 处理 |
