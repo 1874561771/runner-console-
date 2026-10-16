@@ -384,18 +384,90 @@ function renderOverview(body) {
   if (latest) loadArtifacts(latest.run_id);
 }
 
-/* 材料清单（概览内联；点击浏览器直接预览，log/截图/summary.html 均可在线打开） */
+/* 材料清单（概览内联）：
+ * - job/case log：点击在运行台内嵌展开（step 行高亮），不跳转
+ * - 截图：缩略图网格，点击弹层放大，点遮罩空白处关闭
+ * - 汇总页/汇总 JSON：新窗口打开；配置/支持包：直接下载
+ */
 const ARTIFACT_KIND_LABEL = {
   job_log: "Job 日志", case_log: "Case 日志", screenshot: "截图",
   summary_html: "汇总页", summary_json: "汇总 JSON", run_meta: "运行元数据",
   support_tgz: "支持包", config: "配置", other: "其他",
 };
+/* 这些 kind 浏览器可直接预览（不带 download）；其余（配置/包）点击即下载 */
+const PREVIEW_KINDS = new Set(["job_log", "case_log", "summary_html"]);
+const INLINE_LOG_KINDS = new Set(["job_log", "case_log"]);
 
 function fmtSize(bytes) {
   const n = Number(bytes) || 0;
   if (n >= 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + " MB";
   if (n >= 1024) return (n / 1024).toFixed(1) + " KB";
   return n + " B";
+}
+
+/* step / 结构 / 错误行高亮（对应 runner 侧 ui_automation.step 的日志格式） */
+function logLineClass(line) {
+  if (/^\s*File "|^\w+(Error|Exception)\b|^Traceback\b/.test(line)) return "lv-err";
+  if (/:\s*FAIL\s{2}/.test(line) || /\[ERROR\]/.test(line)) return "ln-fail";
+  if (/:\s*PASS\s{2}/.test(line)) return "ln-pass";
+  if (/:\s*START\s/.test(line)) return "lv-step";
+  if (/=== .*Step\d|=====.+=====$/.test(line)) return "lv-step";
+  if (/:\s*(Saved .*)?[Ss]creenshot|Saved support snapshot/.test(line)) return "lv-shot";
+  if (/RESULT |duration=/.test(line)) return "lv-struct";
+  return "";
+}
+
+function renderLogText(text) {
+  const lines = String(text).split(/\r?\n/);
+  const MAX = 5000;
+  const shown = lines.length > MAX ? lines.slice(0, MAX) : lines;
+  let html = "";
+  for (const ln of shown) {
+    const cls = logLineClass(ln);
+    html += cls ? `<div class="${cls}">${esc(ln)}</div>` : `<div>${esc(ln)}</div>`;
+  }
+  if (lines.length > MAX) {
+    html += `<div class="lv-struct">…（其余 ${lines.length - MAX} 行省略，可下载原文件查看）</div>`;
+  }
+  return html;
+}
+
+/* 内嵌 log 查看：同一时间只展开一个，再次点击收起 */
+async function toggleLogView(runId, relpath, anchor) {
+  const existing = $(".rc-logview");
+  if (existing) {
+    const same = existing.dataset.key === runId + "|" + relpath;
+    existing.remove();
+    if (same) return;
+  }
+  const view = document.createElement("div");
+  view.className = "rc-logview";
+  view.dataset.key = runId + "|" + relpath;
+  view.innerHTML = `<div class="rc-logview-head"><span>${esc(relpath)}</span>
+    <button type="button" class="rc-logview-x" title="关闭">×</button></div>
+    <pre class="rc-logview-body"><div class="rc-cases-empty">加载中…</div></pre>`;
+  anchor.after(view);
+  view.querySelector(".rc-logview-x").addEventListener("click", () => view.remove());
+  let text = "";
+  try {
+    const res = await apiFetch(`/runs/${encodeURIComponent(runId)}/${relpath.split("/").map(encodeURIComponent).join("/")}`);
+    text = await res.text();
+    if (!res.ok) text = `加载失败（${res.status}）`;
+  } catch (e) { text = "加载失败：" + (e.message || e); }
+  const body = view.querySelector(".rc-logview-body");
+  if (!body) return;
+  body.innerHTML = renderLogText(text);
+  body.scrollTop = 0;
+}
+
+/* 截图 lightbox：点击遮罩空白处关闭（点图片本身不关） */
+function openLightbox(url, name) {
+  const mask = document.createElement("div");
+  mask.className = "rc-lightbox";
+  mask.innerHTML = `<img src="${url}" alt="${esc(name)}" title="${esc(name)}">`;
+  mask.addEventListener("click", (e) => { if (e.target === mask) mask.remove(); });
+  document.body.appendChild(mask);
+  onDispose(() => mask.remove());
 }
 
 async function loadArtifacts(runId) {
@@ -410,19 +482,41 @@ async function loadArtifacts(runId) {
     list.innerHTML = `<div class="rc-cases-empty">该 run 没有材料记录</div>`;
     return;
   }
+  const fileUrl = (rel) => `/runs/${encodeURIComponent(runId)}/${rel.split("/").map(encodeURIComponent).join("/")}`;
   const byKind = {};
   for (const f of files) (byKind[f.kind] = byKind[f.kind] || []).push(f);
   const KIND_ORDER = ["job_log", "summary_html", "summary_json", "run_meta", "case_log", "screenshot", "support_tgz", "config", "other"];
   list.innerHTML = KIND_ORDER.filter((k) => byKind[k]?.length).map((k) => `
-    <div class="rc-art-group">
+    <div class="rc-art-group" data-kind="${esc(k)}">
       <div class="rc-art-kind">${esc(ARTIFACT_KIND_LABEL[k] || k)} <span class="faint">(${byKind[k].length})</span></div>
-      ${byKind[k].map((f) => `
-        <a class="rc-art-file" href="/runs/${encodeURIComponent(runId)}/${f.relpath.split("/").map(encodeURIComponent).join("/")}"
-           target="_blank" rel="noopener">
-          <span class="rc-art-name">${esc(f.relpath)}</span>
-          <span class="rc-art-size">${fmtSize(f.size_bytes)}</span>
-        </a>`).join("")}
+      ${k === "screenshot"
+        ? `<div class="rc-shots">${byKind[k].map((f) => `
+            <button type="button" class="rc-shot" data-url="${fileUrl(f.relpath)}" data-name="${esc(f.relpath)}" title="${esc(f.relpath)}（点击放大）">
+              <img src="${fileUrl(f.relpath)}" loading="lazy" alt="${esc(f.relpath)}">
+            </button>`).join("")}</div>`
+        : byKind[k].map((f) => {
+            const url = fileUrl(f.relpath);
+            if (INLINE_LOG_KINDS.has(k)) {
+              return `<button type="button" class="rc-art-file rc-art-log" data-run="${esc(runId)}" data-rel="${esc(f.relpath)}">
+                <span class="rc-art-name">${esc(f.relpath)}</span>
+                <span class="rc-art-size">${fmtSize(f.size_bytes)} · 点击查看</span>
+              </button>`;
+            }
+            const dl = PREVIEW_KINDS.has(k) ? "" : " download";
+            return `<a class="rc-art-file" href="${url}" target="_blank" rel="noopener"${dl}>
+              <span class="rc-art-name">${esc(f.relpath)}</span>
+              <span class="rc-art-size">${fmtSize(f.size_bytes)}${dl ? " · 下载" : " · 打开"}</span>
+            </a>`;
+          }).join("")}
     </div>`).join("");
+  // log 内嵌展开
+  $$(".rc-art-log", list).forEach((b) =>
+    b.addEventListener("click", () => {
+      toggleLogView(b.dataset.run, b.dataset.rel, b.closest(".rc-art-group") || b);
+    }));
+  // 截图 lightbox
+  $$(".rc-shot", list).forEach((b) =>
+    b.addEventListener("click", () => openLightbox(b.dataset.url, b.dataset.name)));
 }
 
 /* Case 列表 */
