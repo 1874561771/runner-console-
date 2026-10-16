@@ -34,7 +34,6 @@ const state = {
   },
   loop: null,
   tab: "overview",
-  casesRunId: "",
   consoleStream: null,
   pollTimer: null,
 };
@@ -246,10 +245,17 @@ async function pollOnce() {
     updateSummaryCard();
     updateEnvPill();
     setRunUI();
-    // 仅在 loop 状态变化（如 running → done/stopped）时才重建概览区：
-    // 定时重建会销毁用户正在查看的内嵌 log / 截图 lightbox 并打断滚动
-    if (statusChanged && state.tab === "overview") renderTabBody();
-    else if (state.tab === "overview" && loop.status === "running") updateOverviewLive();
+    // 状态变化（如 running → done/stopped）：重建概览区 + 刷新最近任务列表
+    // 的徽标（否则列表一直显示旧的 running）；定时重建会销毁用户正在查看的
+    // 内嵌 log / 截图 lightbox 并打断滚动，所以数据没变时绝不动 DOM
+    if (statusChanged) {
+      if (state.tab === "overview") renderTabBody();
+      fetchJson("/api/loops", []).then((ls) => {
+        if (Array.isArray(ls) && ls.length) { state.loops = ls; renderRecentList(); }
+      });
+    } else if (state.tab === "overview" && loop.status === "running") {
+      updateOverviewLive();
+    }
   } catch { /* 瞬时错误忽略 */ }
 }
 
@@ -271,7 +277,6 @@ async function bindLoopById(id) {
     state.loop = { id };
   }
   state.tab = "overview";
-  state.casesRunId = "";
   renderRight();
   startPolling();
   updateEnvPill();
@@ -296,7 +301,6 @@ function renderRight() {
     <div class="card">
       <div class="rc-tabs">
         <button class="rc-tab ${state.tab === "overview" ? "on" : ""}" data-t="overview" type="button">概览</button>
-        <button class="rc-tab ${state.tab === "cases" ? "on" : ""}" data-t="cases" type="button">Case 列表</button>
         <button class="rc-tab ${state.tab === "console" ? "on" : ""}" data-t="console" type="button">控制台</button>
         <span class="rc-spacer"></span>
         ${latest ? `<a class="rc-summary-link" href="/api/runs/${encodeURIComponent(latest.run_id)}/summary.html" target="_blank" rel="noopener">summary.html</a>` : ""}
@@ -364,7 +368,6 @@ function renderTabBody() {
   const body = $("#rc-tab-body");
   if (!body || !state.loop) return;
   if (state.tab === "overview") renderOverview(body);
-  else if (state.tab === "cases") renderCases(body);
   else renderConsole(body);
 }
 
@@ -395,8 +398,8 @@ function renderOverview(body) {
           </select>` : `<span class="faint mono" style="font-size:11.5px">run ${esc(latest.run_id)}</span>`}
         </div>
         <table class="table">
-          <thead><tr><th>Case</th><th>Result</th><th>Duration</th><th>Message</th><th></th></tr></thead>
-          <tbody id="rc-cases-body"><tr><td colspan="5"><div class="rc-cases-empty">加载中…</div></td></tr></tbody>
+          <thead><tr><th>Case</th><th>Result</th><th>Duration</th><th>Message</th></tr></thead>
+          <tbody id="rc-cases-body"><tr><td colspan="4"><div class="rc-cases-empty">加载中…</div></td></tr></tbody>
         </table>
         <div class="rc-cmd-label">材料 · Run ${esc(latest.run_id)}${l.status === "running" ? "（实时）" : ""}</div>
         <div id="rc-art-list"><div class="rc-cases-empty">加载中…</div></div>`
@@ -405,8 +408,8 @@ function renderOverview(body) {
           <div class="rc-cmd-label" style="margin:0">运行结果 <span class="badge running">实时</span></div>
         </div>
         <table class="table">
-          <thead><tr><th>Case</th><th>Result</th><th>Duration</th><th>Message</th><th></th></tr></thead>
-          <tbody id="rc-cases-body"><tr><td colspan="5"><div class="rc-cases-empty">等待第一个 case 开始…</div></td></tr></tbody>
+          <thead><tr><th>Case</th><th>Result</th><th>Duration</th><th>Message</th></tr></thead>
+          <tbody id="rc-cases-body"><tr><td colspan="4"><div class="rc-cases-empty">等待第一个 case 开始…</div></td></tr></tbody>
         </table>
         <div class="rc-cmd-label">材料 · 实时</div>
         <div id="rc-art-list"><div class="rc-cases-empty">run 目录创建后实时显示</div></div>`
@@ -528,14 +531,40 @@ async function toggleLogView(runId, relpath, anchor) {
   body.scrollTop = 0;
 }
 
-/* 截图 lightbox：点击遮罩空白处关闭（点图片本身不关） */
+/* 截图 lightbox：点击遮罩空白处关闭（点图片本身不关）；底部显示截图名 */
 function openLightbox(url, name) {
   const mask = document.createElement("div");
   mask.className = "rc-lightbox";
-  mask.innerHTML = `<img src="${url}" alt="${esc(name)}" title="${esc(name)}">`;
+  mask.innerHTML = `<figure><img src="${url}" alt="${esc(name)}">
+    <figcaption class="mono">${esc(name)}</figcaption></figure>`;
   mask.addEventListener("click", (e) => { if (e.target === mask) mask.remove(); });
   document.body.appendChild(mask);
   onDispose(() => mask.remove());
+}
+
+/* 截图文件名（由步骤描述命名）：Step3__Unlock_Network_Interfaces → Step3: Unlock Network Interfaces */
+function shotLabel(relpath) {
+  const base = String(relpath).split("/").pop().replace(/\.(png|jpg|jpeg|webp)$/i, "");
+  return base.replace(/_+/g, " ").trim() || base;
+}
+
+/* 截图网格：按所属 case 分组，缩略图下方显示步骤名（文件名即步骤描述） */
+function renderShotGrid(shots, fileUrl) {
+  const byCase = {};
+  for (const f of shots) {
+    const key = f.case_name || "其它截图";
+    (byCase[key] = byCase[key] || []).push(f);
+  }
+  return Object.entries(byCase).map(([caseName, list]) => `
+    <div class="rc-shots-case">
+      <div class="rc-shots-case-name">${esc(caseName)} <span class="faint">(${list.length})</span></div>
+      <div class="rc-shots">${list.map((f) => `
+        <button type="button" class="rc-shot" data-url="${fileUrl(f.relpath)}" data-name="${esc(shotLabel(f.relpath))}"
+                title="${esc(shotLabel(f.relpath))}（点击放大）">
+          <img src="${fileUrl(f.relpath)}" loading="lazy" alt="${esc(f.relpath)}">
+          <span class="rc-shot-name">${esc(shotLabel(f.relpath))}</span>
+        </button>`).join("")}</div>
+    </div>`).join("");
 }
 
 async function loadArtifacts(runId) {
@@ -563,10 +592,7 @@ function renderArtifactsInto(list, runId, files) {
     <div class="rc-art-group" data-kind="${esc(k)}">
       <div class="rc-art-kind">${esc(ARTIFACT_KIND_LABEL[k] || k)} <span class="faint">(${byKind[k].length})</span></div>
       ${k === "screenshot"
-        ? `<div class="rc-shots">${byKind[k].map((f) => `
-            <button type="button" class="rc-shot" data-url="${fileUrl(f.relpath)}" data-name="${esc(f.relpath)}" title="${esc(f.relpath)}（点击放大）">
-              <img src="${fileUrl(f.relpath)}" loading="lazy" alt="${esc(f.relpath)}">
-            </button>`).join("")}</div>`
+        ? renderShotGrid(byKind[k], fileUrl)
         : byKind[k].map((f) => {
             const url = fileUrl(f.relpath);
             if (INLINE_LOG_KINDS.has(k)) {
@@ -602,14 +628,14 @@ function renderCasesBody(cases) {
   const tbody = $("#rc-cases-body");
   if (!tbody) return;
   if (!cases.length) {
-    tbody.innerHTML = `<tr><td colspan="5"><div class="rc-cases-empty">该 run 没有 case 明细</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4"><div class="rc-cases-empty">该 run 没有 case 明细</div></td></tr>`;
     return;
   }
   let html = "", lastFeature = null;
   for (const c of cases) {
     const feature = c.name.includes("/") ? c.name.slice(0, c.name.lastIndexOf("/")) : "";
     if (feature && feature !== lastFeature) {
-      html += `<tr class="rc-grp"><td colspan="5">${esc(feature)}</td></tr>`;
+      html += `<tr class="rc-grp"><td colspan="4">${esc(feature)}</td></tr>`;
       lastFeature = feature;
     }
     const indent = feature ? " rc-cname-indent" : "";
@@ -618,46 +644,9 @@ function renderCasesBody(cases) {
       <td><span class="badge ${caseBadgeCls(c.status)}">${esc(c.status)}</span></td>
       <td class="mono">${c.duration_s != null ? esc(c.duration_s) + "s" : "—"}</td>
       <td><div class="rc-msg" title="${esc(c.message || "")}">${esc(c.message || "—")}</div></td>
-      <td><div class="rc-thumb" title="截图占位"></div></td>
     </tr>`;
   }
   tbody.innerHTML = html;
-}
-
-async function loadCases() {
-  const runId = state.casesRunId;
-  if (!runId) { renderCasesBody([]); return; }
-  try {
-    const data = await (await apiFetch(`/api/runs/${encodeURIComponent(runId)}`)).json();
-    if (state.casesRunId !== runId) return; // 已切换
-    renderCasesBody(data.cases || []);
-  } catch {
-    renderCasesBody([]);
-  }
-}
-
-function renderCases(body) {
-  const jobs = (state.loop.jobs || []).filter((j) => j.run_id && j.has_summary);
-  if (!state.casesRunId && jobs.length) state.casesRunId = jobs[jobs.length - 1].run_id;
-  const options = jobs.map((j) =>
-    `<option value="${esc(j.run_id)}" ${j.run_id === state.casesRunId ? "selected" : ""}>${esc(j.run_id)}（第 ${j.iteration} 轮 · ${esc(j.status)}）</option>`).join("");
-  body.innerHTML = `
-    <div class="rc-tabpad">
-      <div class="rc-cases-head">
-        <select class="select rc-run-select" id="rc-sel-run" ${jobs.length ? "" : "disabled"}>
-          ${options || `<option value="">暂无已完成 run</option>`}
-        </select>
-      </div>
-      <table class="table">
-        <thead><tr><th>Case</th><th>Result</th><th>Duration</th><th>Message</th><th></th></tr></thead>
-        <tbody id="rc-cases-body"></tbody>
-      </table>
-    </div>`;
-  $("#rc-sel-run", body).addEventListener("change", (e) => {
-    state.casesRunId = e.target.value;
-    loadCases();
-  });
-  loadCases();
 }
 
 /* 控制台 */

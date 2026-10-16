@@ -134,9 +134,10 @@ def create_app() -> FastAPI:
 
     @app.get("/favicon.ico", include_in_schema=False)
     async def favicon():
-        path = FRONTEND_DIR / "favicon.ico"
+        # 浏览器默认请求 /favicon.ico；项目图标是 SVG，直接以 SVG 响应
+        path = FRONTEND_DIR / "favicon.svg"
         if path.is_file():
-            return FileResponse(path)
+            return FileResponse(path, media_type="image/svg+xml")
         raise HTTPException(status_code=404)
 
     # 静态前端必须最后挂载："/" 通配，先注册的 /api 路由优先匹配

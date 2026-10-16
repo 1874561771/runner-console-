@@ -120,12 +120,20 @@
 .rc-logview-body .lv-struct { color: #9AA0A6; font-weight: 600; }
 
 /* 截图缩略图 + lightbox */
+.rc-shots-case { margin-bottom: 10px; }
+.rc-shots-case:last-child { margin-bottom: 0; }
+.rc-shots-case-name { font-size: 11.5px; font-weight: 600; color: var(--ink-2); margin-bottom: 5px; }
 .rc-shots { display: flex; flex-wrap: wrap; gap: 8px; }
 .rc-shot {
   padding: 0; border: 1px solid var(--line-soft); border-radius: var(--radius-btn);
   background: none; cursor: zoom-in; overflow: hidden; line-height: 0;
 }
 .rc-shot img { width: 128px; height: 80px; object-fit: cover; display: block; }
+.rc-shot-name {
+  display: block; line-height: 1.3; padding: 4px 6px;
+  font-size: 10.5px; color: var(--ink-2); text-align: left;
+  max-width: 128px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .rc-shot:hover { border-color: var(--accent); }
 .rc-lightbox {
   position: fixed; inset: 0; z-index: 90;
@@ -133,10 +141,16 @@
   display: flex; align-items: center; justify-content: center;
   cursor: zoom-out;
 }
+.rc-lightbox figure { margin: 0; text-align: center; }
 .rc-lightbox img {
-  max-width: 92vw; max-height: 92vh;
+  max-width: 92vw; max-height: 86vh;
   border-radius: var(--radius-btn); box-shadow: 0 12px 48px rgba(0, 0, 0, .5);
   cursor: default;
+}
+.rc-lightbox figcaption {
+  margin-top: 10px; font-size: 13px; color: #E8EAED;
+  background: rgba(255, 255, 255, .08); display: inline-block;
+  padding: 6px 14px; border-radius: 14px;
 }
 
 /* ── 左侧运行配置 ── */
