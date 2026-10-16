@@ -14,6 +14,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -39,40 +40,56 @@ def is_git_repo(workdir: Path) -> bool:
 
 
 _BRANCH_CACHE_TTL = 60.0
+_BRANCH_CACHE_STALE_MAX = 600.0  # 过期数据最多再兜底 10 分钟（期间后台刷新）
 _BRANCH_CACHE: dict = {"key": None, "data": [], "at": 0.0}
+_BRANCH_REFRESH_LOCK = threading.Lock()
+
+
+def _refresh_branches(workdir: Path) -> None:
+    """后台刷新分支缓存（fetch + for-each-ref）；失败保留旧数据。"""
+    if not _BRANCH_REFRESH_LOCK.acquire(blocking=False):
+        return  # 已有刷新在跑
+    try:
+        if is_git_repo(workdir):
+            try:
+                _run(["git", "fetch", "--prune", "origin"], cwd=workdir, timeout=8)
+            except Exception:
+                pass
+        names: list[str] = []
+        r = _run(["git", "for-each-ref", "--format=%(refname:short)", "refs/heads", "refs/remotes/origin"], cwd=workdir)
+        if r.returncode == 0:
+            for line in r.stdout.splitlines():
+                name = line.strip()
+                if not name or name == "origin" or name.endswith("/HEAD"):
+                    continue
+                if name.startswith("origin/"):
+                    name = name[len("origin/"):]
+                if name not in names:
+                    names.append(name)
+        head = current_head(workdir)
+        _BRANCH_CACHE.update(key=str(workdir), data=[{"name": n, "current": n == head} for n in names], at=time.monotonic())
+    finally:
+        _BRANCH_REFRESH_LOCK.release()
 
 
 def list_branches(workdir: Path) -> list[dict]:
     """Remote + local branch names. Does a best-effort fetch (ignored on failure).
 
-    带 60s TTL 缓存：git fetch 每次要数秒（内网 GitLab），运行台每次渲染
-    都调本函数，不缓存会拖慢整个 /api/config。切分支后最多 60s 延迟。
+    stale-while-revalidate 缓存：TTL 内直接返回；过期后返回旧数据并起后台
+    线程刷新（git fetch 每次数秒，同步做会拖慢 /api/config / 运行台首屏）。
+    旧数据最多兜底 10 分钟，超龄才同步刷新。
     """
     key = str(workdir)
     now = time.monotonic()
-    if _BRANCH_CACHE["key"] == key and now - _BRANCH_CACHE["at"] < _BRANCH_CACHE_TTL:
-        return _BRANCH_CACHE["data"]
-    if not is_git_repo(workdir):
-        return []
-    try:
-        _run(["git", "fetch", "--prune", "origin"], cwd=workdir, timeout=8)
-    except Exception:
-        pass
-    names: list[str] = []
-    r = _run(["git", "for-each-ref", "--format=%(refname:short)", "refs/heads", "refs/remotes/origin"], cwd=workdir)
-    if r.returncode == 0:
-        for line in r.stdout.splitlines():
-            name = line.strip()
-            if not name or name == "origin" or name.endswith("/HEAD"):
-                continue
-            if name.startswith("origin/"):
-                name = name[len("origin/"):]
-            if name not in names:
-                names.append(name)
-    head = current_head(workdir)
-    data = [{"name": n, "current": n == head} for n in names]
-    _BRANCH_CACHE.update(key=key, data=data, at=now)
-    return data
+    if _BRANCH_CACHE["key"] == key:
+        age = now - _BRANCH_CACHE["at"]
+        if age < _BRANCH_CACHE_TTL:
+            return _BRANCH_CACHE["data"]
+        if age < _BRANCH_CACHE_STALE_MAX:
+            threading.Thread(target=_refresh_branches, args=(workdir,), daemon=True).start()
+            return _BRANCH_CACHE["data"]
+    _refresh_branches(workdir)
+    return _BRANCH_CACHE["data"]
 
 
 def current_head(workdir: Path) -> str:
@@ -110,13 +127,15 @@ def prepare_worktree(workdir: Path, dest: Path, git_ref: str) -> Path:
     if dest.exists():
         shutil.rmtree(dest, ignore_errors=True)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        _run(["git", "fetch", "--prune", "origin"], cwd=workdir, timeout=90)
-    except Exception:
-        pass
     if git_ref in ("", "HEAD", "(workdir)"):
         ref = "HEAD"
     else:
+        # 仅指定远端分支/ref 时才需要 fetch；HEAD 场景跳过——每轮 iteration
+        # 都 fetch 会因内网 GitLab 慢而拖长轮间隙（STOP 也要等它）。
+        try:
+            _run(["git", "fetch", "--prune", "origin"], cwd=workdir, timeout=30)
+        except Exception:
+            pass
         ref = _resolve_ref(workdir, git_ref)
     r = _run(
         ["git", "worktree", "add", "--detach", str(dest), ref],

@@ -142,6 +142,21 @@ copy config.example.toml config.toml   # 填 [database]、[paths]（workdir=D:/U
 浏览器 `http://127.0.0.1:8765/`（真实后端）+ `python -m http.server 8080` 开 `frontend/?mock=1`（对照用）。
 对照 Ardot 三屏（文件 736602918319197）：运行台渐进披露表单 → 发起任务 → 任务中心行点击 Inspector → 控制台 SSE 滚动 → 看板统计。1366/1920 两档宽度。
 
+> **运行台交互重构（2026-10-16，用户实测 6 项反馈，CodeBuddy 追加）**
+>
+> | # | 反馈 | 处理 |
+> |---|---|---|
+> | 1 | RUN 按钮在右上角，不顺手 | 移到左侧配置卡底部整行（命令预览下方） |
+> | 2 | 切页签后 console 断流 | 根因：render 每次重置 `state.tab="overview"` 且只绑定 running loop。改为模块级 state 保留 loop 绑定与页签；切回自动重开 SSE（快照续传后继续追加）。端到端实测：切走 2133 字符 → 切回 6703 → 3s 后 7062（流恢复）✅ |
+> | 3 | 任务中心「在运行台打开」看不到详情/材料 | 根因：tasks.js 早已跳 `#/console?loop=<id>` 但 console.js 从未解析该参数。已解析并绑定指定 loop；右栏新增「工件」页签（Job 日志/Case 日志/截图/汇总页分组，带大小与下载链接，走 /api/runs/<id>/artifacts + /runs/<id>/<relpath>） |
+> | 4 | 点「最近一次运行」跳任务中心不合理 | 空态按钮删除；运行台默认绑定最近一条任务直接显示详情（优先 running），不再跳走 |
+> | 5 | 运行台加载慢 | /api/config 的分支缓存 60s 过期后首访同步 fetch 要 1.8-2s。改 stale-while-revalidate：过期先返回旧数据、后台线程刷新（旧数据最长兜底 10 分钟）。实测稳定 10ms（仅服务冷启动首跑 1.9s） |
+> | 6 | 「配置下方最近 job 列表 + 点击右侧看详情」设计丢失 | 已恢复：配置卡下方新增「最近任务」卡（最近 8 条，徽标/环境/目标/owner，当前绑定项高亮），点击即 showLoop(id) 右侧刷新；发起运行/URL 进入也走同一入口 |
+>
+> - 顺带修复：`prepare_worktree` 原来每轮 iteration 都 `git fetch`（timeout 90s）——HEAD 场景（默认）已跳过，指定远端分支才 fetch 且降为 30s。此前无限循环轮间隙会被 fetch 卡住、STOP 响应延迟几十秒，实测已消除。
+> - 右栏详情区加 `position: sticky`（滚动左列时右侧详情保持可见）。
+> - 改动文件：`frontend/js/views/console.js`（主要）、`frontend/css/console.css`、`app/core/git_worktree.py`。
+
 > **P3 执行结果（2026-10-15，CodeBuddy 追加）**
 >
 > - 走查方式：Python playwright（headless Chromium）登录真实后端逐屏截图（1366 宽）：登录页 / 运行台 / 高级展开态 / Pause on fail 选中态 / 任务中心 / 数据看板，全部渲染正常。

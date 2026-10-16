@@ -24,6 +24,7 @@ const state = {
   config: { products: [], branches: [], suites: [], tests: [] },
   envs: [],
   uploads: [],
+  loops: [],          // 最近任务列表（/api/loops，最新在前）
   envId: "",
   form: {
     product: "firebox", source: "repo", gitRef: "HEAD", uploadId: "",
@@ -209,7 +210,7 @@ async function onRun() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.error) { toast(data.error || `启动失败（${res.status}）`, true); return; }
     toast(`loop 已启动：${data.loop_id}`);
-    await bindLoopById(data.loop_id);
+    await showLoop(data.loop_id);
   } catch (err) {
     toast(err.message || "启动失败", true);
   } finally {
@@ -280,10 +281,8 @@ function renderRight() {
   if (!state.loop) {
     box.innerHTML = `
       <div class="card rc-empty">
-        <p>当前没有进行中的循环任务。<br>在左侧配置运行参数后点击 RUN 启动。</p>
-        <button class="btn btn-ghost" id="rc-btn-last" type="button">最近一次运行 →</button>
+        <p>在左侧选择环境、配置运行参数后点击 RUN 启动。<br>历史任务见左下「最近任务」。</p>
       </div>`;
-    $("#rc-btn-last").addEventListener("click", () => { location.hash = "#/tasks"; });
     setRunUI();
     return;
   }
@@ -295,6 +294,7 @@ function renderRight() {
         <button class="rc-tab ${state.tab === "overview" ? "on" : ""}" data-t="overview" type="button">概览</button>
         <button class="rc-tab ${state.tab === "cases" ? "on" : ""}" data-t="cases" type="button">Case 列表</button>
         <button class="rc-tab ${state.tab === "console" ? "on" : ""}" data-t="console" type="button">控制台</button>
+        <button class="rc-tab ${state.tab === "artifacts" ? "on" : ""}" data-t="artifacts" type="button">工件</button>
         <span class="rc-spacer"></span>
         ${latest ? `<a class="rc-summary-link" href="/api/runs/${encodeURIComponent(latest.run_id)}/summary.html" target="_blank" rel="noopener">summary.html</a>` : ""}
       </div>
@@ -358,6 +358,7 @@ function renderTabBody() {
   if (!body || !state.loop) return;
   if (state.tab === "overview") renderOverview(body);
   else if (state.tab === "cases") renderCases(body);
+  else if (state.tab === "artifacts") renderArtifacts(body);
   else renderConsole(body);
 }
 
@@ -484,6 +485,62 @@ function openConsoleStreamFor(pre) {
       pre.scrollTop = pre.scrollHeight;
     },
   });
+}
+
+/* 工件（job log / case log / 截图 / 汇总页等，跟最近一次 run） */
+const ARTIFACT_KIND_LABEL = {
+  job_log: "Job 日志", case_log: "Case 日志", screenshot: "截图",
+  summary_html: "汇总页", summary_json: "汇总 JSON", run_meta: "运行元数据",
+  support_tgz: "支持包", config: "配置", other: "其他",
+};
+
+function fmtSize(bytes) {
+  const n = Number(bytes) || 0;
+  if (n >= 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + " MB";
+  if (n >= 1024) return (n / 1024).toFixed(1) + " KB";
+  return n + " B";
+}
+
+async function renderArtifacts(body) {
+  const latest = [...(state.loop.jobs || [])].reverse().find((j) => j.run_id);
+  if (!latest) {
+    body.innerHTML = `<div class="rc-tabpad"><div class="rc-cases-empty">暂无产物（iteration 结束后生成）</div></div>`;
+    return;
+  }
+  const runId = latest.run_id;
+  body.innerHTML = `
+    <div class="rc-tabpad">
+      <div class="rc-cases-head"><span class="rc-group-label" style="margin:0">Run ${esc(runId)} 产物</span></div>
+      <div id="rc-art-list">${skeletonRowsSafe()}</div>
+    </div>`;
+  let files = [];
+  try {
+    files = await (await apiFetch(`/api/runs/${encodeURIComponent(runId)}/artifacts`)).json();
+    if (!Array.isArray(files)) files = [];
+  } catch { files = []; }
+  const list = $("#rc-art-list");
+  if (!list) return; // 已切换视图
+  if (!files.length) {
+    list.innerHTML = `<div class="rc-cases-empty">该 run 没有产物记录</div>`;
+    return;
+  }
+  const byKind = {};
+  for (const f of files) (byKind[f.kind] = byKind[f.kind] || []).push(f);
+  const KIND_ORDER = ["job_log", "summary_html", "summary_json", "run_meta", "case_log", "screenshot", "support_tgz", "config", "other"];
+  list.innerHTML = KIND_ORDER.filter((k) => byKind[k]?.length).map((k) => `
+    <div class="rc-art-group">
+      <div class="rc-art-kind">${esc(ARTIFACT_KIND_LABEL[k] || k)} <span class="faint">(${byKind[k].length})</span></div>
+      ${byKind[k].map((f) => `
+        <a class="rc-art-file" href="/runs/${encodeURIComponent(runId)}/${f.relpath.split("/").map(encodeURIComponent).join("/")}"
+           target="_blank" rel="noopener" download>
+          <span class="rc-art-name">${esc(f.relpath)}</span>
+          <span class="rc-art-size">${fmtSize(f.size_bytes)}</span>
+        </a>`).join("")}
+    </div>`).join("");
+}
+
+function skeletonRowsSafe() {
+  return `<div class="rc-cases-empty">加载中…</div>`;
 }
 
 /* ── 左侧配置表单 ── */
@@ -621,6 +678,7 @@ export async function render(el) {
   state.config = { products: [], branches: [], suites: [], tests: [], ...config };
   state.envs = Array.isArray(envs) ? envs : [];
   state.uploads = Array.isArray(uploads) ? uploads : [];
+  state.loops = Array.isArray(loops) ? loops : [];
 
   // 默认表单值
   const f = state.form;
@@ -631,11 +689,16 @@ export async function render(el) {
   f.test = (state.config.tests || [])[0] || "";
   f.uploadId = state.uploads[0]?.id || "";
 
-  // 绑定进行中 loop（有则显示，无则空态）
-  const running = (Array.isArray(loops) ? loops : []).find((l) => l.status === "running");
-  state.loop = running || null;
-  state.tab = "overview";
-  state.casesRunId = "";
+  // 绑定 loop，优先级：
+  // 1) URL ?loop=（任务中心「在运行台打开」）
+  // 2) 模块级保留的 state.loop（切页签回来不断线）
+  // 3) 正在运行的 loop；再退到最近一条任务（右栏直接显示最近详情）
+  const urlLoopId = new URLSearchParams(location.hash.split("?")[1] || "").get("loop");
+  if (urlLoopId) {
+    await bindLoopById(urlLoopId);
+  } else if (!state.loop || !state.loops.some((l) => l.id === state.loop.id)) {
+    state.loop = state.loops.find((l) => l.status === "running") || state.loops[0] || null;
+  }
 
   el.innerHTML = `
     <div class="rc-head">
@@ -647,49 +710,57 @@ export async function render(el) {
         </button>
         <div class="rc-env-menu card" id="rc-env-menu" hidden></div>
       </div>
-      <button class="btn btn-primary rc-btn-run" id="rc-btn-run" type="button">RUN</button>
     </div>
     <div class="rc-layout">
-      <section class="card rc-config">
-        <div class="card-head">
-          <span class="card-title">运行配置</span>
-          <span class="rc-spacer"></span>
-          <button class="btn btn-ghost btn-sm" id="rc-btn-copy" type="button">复制命令</button>
-        </div>
-        <div class="card-pad">
-          <div class="rc-group">
-            <div class="rc-group-label">目标</div>
-            <div class="field"><label>Product</label><div class="rc-seg" id="rc-seg-product"></div></div>
-            <div class="field"><label>来源</label><div class="rc-seg" id="rc-seg-source"></div></div>
-            <div class="field" id="rc-field-git"><label>分支 / ref</label><select class="select" id="rc-sel-git"></select></div>
-            <div class="field" id="rc-field-upload" hidden><label>我的测试</label><select class="select" id="rc-sel-upload"></select></div>
-            <div class="field" id="rc-field-target"><label>运行目标</label><div class="rc-seg" id="rc-seg-target"></div></div>
-            <div class="field" id="rc-field-suite"><label>Suite</label><select class="select" id="rc-sel-suite"></select></div>
-            <div class="field" id="rc-field-test" hidden><label>Test</label><select class="select" id="rc-sel-test"></select></div>
+      <div class="rc-left">
+        <section class="card rc-config">
+          <div class="card-head">
+            <span class="card-title">运行配置</span>
+            <span class="rc-spacer"></span>
+            <button class="btn btn-ghost btn-sm" id="rc-btn-copy" type="button">复制命令</button>
           </div>
-          <div class="rc-group">
-            <div class="rc-group-label">执行</div>
-            <div class="rc-repeat-row">
-              <div class="rc-repeat-input"><span class="rc-x">×</span><input id="rc-in-repeat" type="number" min="1" value="${f.repeat}" aria-label="重复次数"></div>
-              <label class="rc-switch"><input type="checkbox" id="rc-chk-unlimited"><span class="rc-track"></span><span class="rc-sw-text">无限循环</span></label>
+          <div class="card-pad">
+            <div class="rc-group">
+              <div class="rc-group-label">目标</div>
+              <div class="field"><label>Product</label><div class="rc-seg" id="rc-seg-product"></div></div>
+              <div class="field"><label>来源</label><div class="rc-seg" id="rc-seg-source"></div></div>
+              <div class="field" id="rc-field-git"><label>分支 / ref</label><select class="select" id="rc-sel-git"></select></div>
+              <div class="field" id="rc-field-upload" hidden><label>我的测试</label><select class="select" id="rc-sel-upload"></select></div>
+              <div class="field" id="rc-field-target"><label>运行目标</label><div class="rc-seg" id="rc-seg-target"></div></div>
+              <div class="field" id="rc-field-suite"><label>Suite</label><select class="select" id="rc-sel-suite"></select></div>
+              <div class="field" id="rc-field-test" hidden><label>Test</label><select class="select" id="rc-sel-test"></select></div>
             </div>
-            <label class="rc-switch rc-switch-row rc-row-pause"><input type="checkbox" id="rc-chk-pause"><span class="rc-track"></span><span class="rc-sw-text">Pause on fail</span></label>
-            <label class="rc-switch rc-switch-row"><input type="checkbox" id="rc-chk-headless"><span class="rc-track"></span><span class="rc-sw-text">跳过 Job setup / teardown</span></label>
-          </div>
-          <div class="rc-group">
-            <button class="rc-adv-toggle" id="rc-adv-toggle" type="button">
-              <span>高级 · 固件 Branch / Build</span><span class="rc-adv-caret">›</span>
-            </button>
-            <div class="rc-adv-body" id="rc-adv-body" hidden>
-              <div class="field"><label>固件 branch</label>
-                <input class="input" id="rc-in-fwbranch" placeholder="如 utm-2026_2（留空不指定）" autocomplete="off"></div>
-              <div class="field rc-field-last"><label>固件 build</label><input class="input" id="rc-in-fwbuild" placeholder="如 733385" disabled></div>
+            <div class="rc-group">
+              <div class="rc-group-label">执行</div>
+              <div class="rc-repeat-row">
+                <div class="rc-repeat-input"><span class="rc-x">×</span><input id="rc-in-repeat" type="number" min="1" value="${f.repeat}" aria-label="重复次数"></div>
+                <label class="rc-switch"><input type="checkbox" id="rc-chk-unlimited"><span class="rc-track"></span><span class="rc-sw-text">无限循环</span></label>
+              </div>
+              <label class="rc-switch rc-switch-row rc-row-pause"><input type="checkbox" id="rc-chk-pause"><span class="rc-track"></span><span class="rc-sw-text">Pause on fail</span></label>
+              <label class="rc-switch rc-switch-row"><input type="checkbox" id="rc-chk-headless"><span class="rc-track"></span><span class="rc-sw-text">跳过 Job setup / teardown</span></label>
+            </div>
+            <div class="rc-group">
+              <button class="rc-adv-toggle" id="rc-adv-toggle" type="button">
+                <span>高级 · 固件 Branch / Build</span><span class="rc-adv-caret">›</span>
+              </button>
+              <div class="rc-adv-body" id="rc-adv-body" hidden>
+                <div class="field"><label>固件 branch</label>
+                  <input class="input" id="rc-in-fwbranch" placeholder="如 utm-2026_2（留空不指定）" autocomplete="off"></div>
+                <div class="field rc-field-last"><label>固件 build</label><input class="input" id="rc-in-fwbuild" placeholder="如 733385" disabled></div>
+              </div>
+            </div>
+            <div class="rc-cmd-label">命令预览</div>
+            <div class="rc-cmd" id="rc-cmd"></div>
+            <div class="rc-run-row">
+              <button class="btn btn-primary btn-block" id="rc-btn-run" type="button">RUN</button>
             </div>
           </div>
-          <div class="rc-cmd-label">命令预览</div>
-          <div class="rc-cmd" id="rc-cmd"></div>
-        </div>
-      </section>
+        </section>
+        <section class="card rc-recent">
+          <div class="card-head"><span class="card-title">最近任务</span></div>
+          <div id="rc-recent-list"></div>
+        </section>
+      </div>
       <section class="rc-right" id="rc-right"></section>
     </div>`;
 
@@ -697,7 +768,36 @@ export async function render(el) {
   renderConfigForm();
   wireConfigForm();
   updateEnvPill();
+  renderRecentList();
   renderRight();
   if (state.loop) startPolling();
   setRunUI();
+}
+
+/* ── 最近任务列表（左列配置卡下方） ── */
+function renderRecentList() {
+  const box = $("#rc-recent-list");
+  if (!box) return;
+  const loops = state.loops.slice(0, 8);
+  if (!loops.length) {
+    box.innerHTML = `<div class="rc-recent-empty">还没有任务记录，发起一次运行后这里会显示。</div>`;
+    return;
+  }
+  box.innerHTML = loops.map((l) => {
+    const b = loopBadge(l);
+    const target = l.suite || l.test || "—";
+    const on = state.loop && state.loop.id === l.id ? " on" : "";
+    return `<button type="button" class="rc-recent-item${on}" data-loop="${esc(l.id)}">
+      <div class="rr-row1"><span class="rr-id">${esc(l.id)}</span><span class="badge ${b.cls}">${b.text}</span></div>
+      <div class="rr-meta">${esc(l.env_name || "")} · ${esc(target)} · ${esc(l.owner_name || "")}</div>
+    </button>`;
+  }).join("");
+  $$(".rc-recent-item", box).forEach((el) =>
+    el.addEventListener("click", () => showLoop(el.dataset.loop)));
+}
+
+/* 点击最近任务 / URL 参数：绑定指定 loop 并在右侧显示详情 */
+async function showLoop(id) {
+  await bindLoopById(id);
+  renderRecentList();
 }
