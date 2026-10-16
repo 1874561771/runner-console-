@@ -1,0 +1,46 @@
+# =====================================================================
+# RunnerConsole 配置示例
+# 复制为 config.toml 后按环境修改；config.toml 含密码，勿提交仓库。
+# =====================================================================
+
+[server]
+# Web 控制台监听地址：0.0.0.0 = 对外开放，127.0.0.1 = 仅本机访问
+host = "127.0.0.1"
+# Web 控制台监听端口
+port = 8000
+
+[database]
+# MySQL 8 连接 DSN（app/db/pool.py 消费；migrate.py 亦读取本段）
+host = "127.0.0.1"          # MySQL 主机
+port = 3306                 # MySQL 端口
+user = "runner"             # 数据库账号
+password = "change-me"      # 数据库密码
+database = "runner_console" # 库名，建议建库时指定：CHARACTER SET utf8mb4
+charset = "utf8mb4"         # 连接字符集（默认 utf8mb4，一般不改）
+
+[paths]
+# 测试框架工作目录（被测代码 / runner 所在仓库，可建 worktree）
+workdir = "D:/RunnerAutomation"
+# 测试产物根目录（其下按 run_id 分目录存放日志/截图/汇总页）
+artifacts_root = "D:/RunnerArtifacts"
+# 单环境控制台数据目录（环境注册、配置等）
+console_dir = "D:/RunnerConsole/data/console"
+# 循环任务控制台日志目录（每个 loop_id 一个 <loop_id>.log）
+consoles_dir = "D:/RunnerConsole/data/consoles"
+
+[auth]
+# 认证模式：gitlab = 走 GitLab OAuth/令牌登录；local = 本地账号 + PBKDF2 令牌
+auth_mode = "gitlab"
+# 管理员用户名列表（对应用户表 role='admin'，可执行用户/环境/保留策略管理）
+admins = ["admin1", "admin2"]
+# 会话有效期（天），Cookie max_age 同步使用（默认 7）
+session_ttl_days = 7
+
+[gitlab]
+# 仅 auth_mode = "gitlab" 时生效
+# GitLab 实例地址
+gitlab_url = "https://gitlab.example.com"
+# 用于校验用户归属/拉取用户信息的 GitLab 项目 ID
+gitlab_project_id = 12345
+# 证书为内网 CA 自签时置 true 跳过 TLS 校验（等价原 --gitlab-insecure）
+gitlab_insecure = false

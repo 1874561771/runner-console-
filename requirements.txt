@@ -1,0 +1,7 @@
+# RunnerConsole 运行依赖（Python >= 3.11）
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pymysql>=1.1
+DBUtils>=3.0
+python-multipart>=0.0.9
+# tomllib：Python 3.11+ 标准库，无需安装（pydantic 为 fastapi 传递依赖，直接可用）
