@@ -167,6 +167,14 @@ git remote add origin http://gitlab.wgti.net/<组>/runner-console.git   # 先在
 git push -u origin master    # 仅 HTTP 可用，HTTPS 会超时
 ```
 
+> **P4 执行结果（2026-10-15，CodeBuddy 追加）**
+>
+> - 建仓目标改为 **GitHub**（用户无 GitLab）：https://github.com/1874561771/runner-console-.git
+> - `.gitignore` 新建：`.venv/`、`config.toml`（含 DB 密码）、`data/`、`data_*.log`、`__pycache__/`、IDE 杂物。提交前敏感文件检查通过。
+> - `git init -b main` → commit `3ae8b22`（69 文件）→ push 成功（`main -> main`）。fine-grained PAT 仅用于 push 命令本身，未写入 remote URL / 任何文件；**已提醒用户 push 完成后 revoke 该 token**。
+> - 备注：前两次 push 403/404 是 token 的 Repository access 未包含该仓库 + Contents 只读，用户在 GitHub 上补权限后成功。
+> - 后续正常使用 `git push origin main` 即可（remote 存的是干净 URL，无凭据；下次 push 时 git 会提示输入凭据或由 Windows 凭据管理器接管）。
+
 ### P5 原仓处置（等新服务稳定一周后再做，勿提前）
 
 ```bash
