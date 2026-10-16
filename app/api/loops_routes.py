@@ -276,10 +276,13 @@ def run(body: RunIn, user: dict = Depends(get_current_user)) -> dict:
         #（= 上传文件名；DB relpath 是 '<user>/<uid>/<name>' 存储路径，不能直接当 CLI 参数）
         rel_name = Path(str(up["relpath"])).name
         if up["kind"] == "suite":
+            # runner 在 <worktree>/suites/ 下找 suite（--suite 先补 .txt 再用原名），
+            # overlay 必须复制到 suites/ 内而不是 worktree 根
             params["suite"] = Path(str(up["name"])).stem
+            overlays = [(f"suites/{rel_name}", upload_abs_path(up))]
         else:
             params["test"] = rel_name
-        overlays = [(rel_name, upload_abs_path(up))]
+            overlays = [(rel_name, upload_abs_path(up))]
 
     if not params["suite"] and not params["test"]:
         raise HTTPException(status_code=400, detail="suite / test 至少填一个")

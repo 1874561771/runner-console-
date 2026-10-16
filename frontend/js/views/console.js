@@ -29,7 +29,7 @@ const state = {
   form: {
     product: "firebox", source: "repo", gitRef: "HEAD", uploadId: "",
     targetMode: "suite", suite: "", test: "",
-    repeat: 3, unlimited: false, pauseOnFail: false, headless: false,
+    repeat: 1, unlimited: false, pauseOnFail: false, headless: false,
     fwBranch: "", fwBuild: "",
   },
   loop: null,
