@@ -294,7 +294,6 @@ function renderRight() {
         <button class="rc-tab ${state.tab === "overview" ? "on" : ""}" data-t="overview" type="button">概览</button>
         <button class="rc-tab ${state.tab === "cases" ? "on" : ""}" data-t="cases" type="button">Case 列表</button>
         <button class="rc-tab ${state.tab === "console" ? "on" : ""}" data-t="console" type="button">控制台</button>
-        <button class="rc-tab ${state.tab === "artifacts" ? "on" : ""}" data-t="artifacts" type="button">工件</button>
         <span class="rc-spacer"></span>
         ${latest ? `<a class="rc-summary-link" href="/api/runs/${encodeURIComponent(latest.run_id)}/summary.html" target="_blank" rel="noopener">summary.html</a>` : ""}
       </div>
@@ -358,7 +357,6 @@ function renderTabBody() {
   if (!body || !state.loop) return;
   if (state.tab === "overview") renderOverview(body);
   else if (state.tab === "cases") renderCases(body);
-  else if (state.tab === "artifacts") renderArtifacts(body);
   else renderConsole(body);
 }
 
@@ -369,6 +367,7 @@ function renderOverview(body) {
   const banners = [];
   if (l.stop_reason) banners.push(`<div class="rc-banner warn">停止原因：${esc(l.stop_reason)}</div>`);
   if (l.failed_reason) banners.push(`<div class="rc-banner fail">失败原因：${esc(l.failed_reason)}</div>`);
+  const latest = [...(l.jobs || [])].reverse().find((j) => j.run_id);
   body.innerHTML = `
     <div class="rc-tabpad">
       <div class="rc-meta">
@@ -378,7 +377,52 @@ function renderOverview(body) {
         <div class="rc-meta-cell"><div class="k">Duration</div><div class="v">${esc(fmtDuration(l))}</div></div>
       </div>
       ${banners.join("") || `<div class="rc-note-plain">本次运行无停止 / 失败原因记录。</div>`}
+      ${latest ? `
+        <div class="rc-cmd-label">材料 · Run ${esc(latest.run_id)}</div>
+        <div id="rc-art-list"><div class="rc-cases-empty">加载中…</div></div>` : ""}
     </div>`;
+  if (latest) loadArtifacts(latest.run_id);
+}
+
+/* 材料清单（概览内联；点击浏览器直接预览，log/截图/summary.html 均可在线打开） */
+const ARTIFACT_KIND_LABEL = {
+  job_log: "Job 日志", case_log: "Case 日志", screenshot: "截图",
+  summary_html: "汇总页", summary_json: "汇总 JSON", run_meta: "运行元数据",
+  support_tgz: "支持包", config: "配置", other: "其他",
+};
+
+function fmtSize(bytes) {
+  const n = Number(bytes) || 0;
+  if (n >= 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + " MB";
+  if (n >= 1024) return (n / 1024).toFixed(1) + " KB";
+  return n + " B";
+}
+
+async function loadArtifacts(runId) {
+  let files = [];
+  try {
+    files = await (await apiFetch(`/api/runs/${encodeURIComponent(runId)}/artifacts`)).json();
+    if (!Array.isArray(files)) files = [];
+  } catch { files = []; }
+  const list = $("#rc-art-list");
+  if (!list) return; // 视图已切换 / 概览已重渲染
+  if (!files.length) {
+    list.innerHTML = `<div class="rc-cases-empty">该 run 没有材料记录</div>`;
+    return;
+  }
+  const byKind = {};
+  for (const f of files) (byKind[f.kind] = byKind[f.kind] || []).push(f);
+  const KIND_ORDER = ["job_log", "summary_html", "summary_json", "run_meta", "case_log", "screenshot", "support_tgz", "config", "other"];
+  list.innerHTML = KIND_ORDER.filter((k) => byKind[k]?.length).map((k) => `
+    <div class="rc-art-group">
+      <div class="rc-art-kind">${esc(ARTIFACT_KIND_LABEL[k] || k)} <span class="faint">(${byKind[k].length})</span></div>
+      ${byKind[k].map((f) => `
+        <a class="rc-art-file" href="/runs/${encodeURIComponent(runId)}/${f.relpath.split("/").map(encodeURIComponent).join("/")}"
+           target="_blank" rel="noopener">
+          <span class="rc-art-name">${esc(f.relpath)}</span>
+          <span class="rc-art-size">${fmtSize(f.size_bytes)}</span>
+        </a>`).join("")}
+    </div>`).join("");
 }
 
 /* Case 列表 */
@@ -485,62 +529,6 @@ function openConsoleStreamFor(pre) {
       pre.scrollTop = pre.scrollHeight;
     },
   });
-}
-
-/* 工件（job log / case log / 截图 / 汇总页等，跟最近一次 run） */
-const ARTIFACT_KIND_LABEL = {
-  job_log: "Job 日志", case_log: "Case 日志", screenshot: "截图",
-  summary_html: "汇总页", summary_json: "汇总 JSON", run_meta: "运行元数据",
-  support_tgz: "支持包", config: "配置", other: "其他",
-};
-
-function fmtSize(bytes) {
-  const n = Number(bytes) || 0;
-  if (n >= 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + " MB";
-  if (n >= 1024) return (n / 1024).toFixed(1) + " KB";
-  return n + " B";
-}
-
-async function renderArtifacts(body) {
-  const latest = [...(state.loop.jobs || [])].reverse().find((j) => j.run_id);
-  if (!latest) {
-    body.innerHTML = `<div class="rc-tabpad"><div class="rc-cases-empty">暂无产物（iteration 结束后生成）</div></div>`;
-    return;
-  }
-  const runId = latest.run_id;
-  body.innerHTML = `
-    <div class="rc-tabpad">
-      <div class="rc-cases-head"><span class="rc-group-label" style="margin:0">Run ${esc(runId)} 产物</span></div>
-      <div id="rc-art-list">${skeletonRowsSafe()}</div>
-    </div>`;
-  let files = [];
-  try {
-    files = await (await apiFetch(`/api/runs/${encodeURIComponent(runId)}/artifacts`)).json();
-    if (!Array.isArray(files)) files = [];
-  } catch { files = []; }
-  const list = $("#rc-art-list");
-  if (!list) return; // 已切换视图
-  if (!files.length) {
-    list.innerHTML = `<div class="rc-cases-empty">该 run 没有产物记录</div>`;
-    return;
-  }
-  const byKind = {};
-  for (const f of files) (byKind[f.kind] = byKind[f.kind] || []).push(f);
-  const KIND_ORDER = ["job_log", "summary_html", "summary_json", "run_meta", "case_log", "screenshot", "support_tgz", "config", "other"];
-  list.innerHTML = KIND_ORDER.filter((k) => byKind[k]?.length).map((k) => `
-    <div class="rc-art-group">
-      <div class="rc-art-kind">${esc(ARTIFACT_KIND_LABEL[k] || k)} <span class="faint">(${byKind[k].length})</span></div>
-      ${byKind[k].map((f) => `
-        <a class="rc-art-file" href="/runs/${encodeURIComponent(runId)}/${f.relpath.split("/").map(encodeURIComponent).join("/")}"
-           target="_blank" rel="noopener" download>
-          <span class="rc-art-name">${esc(f.relpath)}</span>
-          <span class="rc-art-size">${fmtSize(f.size_bytes)}</span>
-        </a>`).join("")}
-    </div>`).join("");
-}
-
-function skeletonRowsSafe() {
-  return `<div class="rc-cases-empty">加载中…</div>`;
 }
 
 /* ── 左侧配置表单 ── */
