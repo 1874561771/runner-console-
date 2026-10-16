@@ -46,7 +46,15 @@ _CONTENT_TYPES = {
 def artifact_file(
     run_id: str, relpath: str, user: dict = Depends(get_current_user)
 ) -> FileResponse:
-    get_run_or_404(run_id, user)
+    try:
+        get_run_or_404(run_id, user)
+    except HTTPException as exc:
+        # 运行中的 run 尚未由 ingest 入库（轮末才写），但产物已在磁盘：
+        # 目录存在时放行（仍要求登录），否则维持 404/403
+        if exc.status_code == 404 and (artifacts_root() / run_id).is_dir():
+            pass
+        else:
+            raise
     base = (artifacts_root() / run_id).resolve()
     target = (base / relpath).resolve()
     # 穿越防护：resolve 后必须是 base 自身或其子路径

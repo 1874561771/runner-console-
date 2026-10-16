@@ -17,11 +17,13 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.common import (
+    artifacts_root,
     env_lock_view,
     fmt_dt,
     parse_days,
@@ -40,6 +42,13 @@ from app.db import pool
 from app.schemas import RunIn
 
 router = APIRouter(prefix="/api")
+
+# 运行中实时解析：console 里的 case 状态行（runner 契约格式）
+_LIVE_RUN_ID_RE = re.compile(r"Run id=(\S+)")
+_LIVE_CASE_START_RE = re.compile(r"=====\s*CASE\s+(\S+)\s+=====")
+_LIVE_RESULT_RE = re.compile(r"RESULT\s+(\S+)\s+->\s+(\w+)")
+_LIVE_DURATION_RE = re.compile(r"CASE\s+(\S+)\s+duration=([\d.]+)s")
+_LIVE_SETUP_FAIL_RE = re.compile(r"Case setup FAILED for (\S+)")
 
 # 与 dao._LOOP_JOIN 相同的 JOIN 口径，另带 env relpath（锁目录定位用）
 _LOOP_SELECT = (
@@ -319,3 +328,45 @@ def stop_loop(loop_id: str, user: dict = Depends(get_current_user)) -> dict:
     except LoopStopError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"ok": bool(ok), "message": message}
+
+
+@router.get("/loops/{loop_id}/live-cases")
+def loop_live_cases(loop_id: str, user: dict = Depends(get_current_user)) -> dict:
+    """运行中实时解析：从 console 文本提取本轮 case 状态 + 当前 run 的材料清单。
+
+    iteration 结束前的 case 结果不进 DB（ingest 在轮末才跑），但 console 里
+    的 ===== CASE / RESULT / duration 行已含全部状态，材料文件也在边跑边
+    落盘——这里解析出来供运行台概览实时显示，无需等整轮结束。
+    """
+    _loop_or_404(loop_id, user)
+    manager = get_job_manager()
+    lines = manager.console_tail(loop_id, n=4000)
+
+    run_id: str | None = None
+    cases: dict = {}  # name -> {name, status, duration_s}（插入序 = 运行序）
+    for line in lines:
+        if (m := _LIVE_RUN_ID_RE.search(line)) and run_id is None:
+            run_id = m.group(1)
+        if m := _LIVE_CASE_START_RE.search(line):
+            cases.setdefault(m.group(1), {"name": m.group(1), "status": "running"})
+        if m := _LIVE_SETUP_FAIL_RE.search(line):
+            cases.setdefault(m.group(1), {"name": m.group(1), "status": "running"})
+            cases[m.group(1)]["status"] = "broken"
+        if m := _LIVE_RESULT_RE.search(line):
+            if m.group(1) in cases:
+                cases[m.group(1)]["status"] = m.group(2).lower()
+        if m := _LIVE_DURATION_RE.search(line):
+            if m.group(1) in cases:
+                try:
+                    cases[m.group(1)]["duration_s"] = float(m.group(2))
+                except ValueError:
+                    pass
+
+    artifacts: list[dict] = []
+    if run_id:
+        run_dir = artifacts_root() / run_id
+        if run_dir.is_dir():
+            from app.ingest.run_ingest import _scan_artifacts  # noqa: PLC0415
+
+            artifacts = _scan_artifacts(run_dir)
+    return {"run_id": run_id, "cases": list(cases.values()), "artifacts": artifacts}

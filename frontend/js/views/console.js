@@ -249,6 +249,7 @@ async function pollOnce() {
     // 仅在 loop 状态变化（如 running → done/stopped）时才重建概览区：
     // 定时重建会销毁用户正在查看的内嵌 log / 截图 lightbox 并打断滚动
     if (statusChanged && state.tab === "overview") renderTabBody();
+    else if (state.tab === "overview" && loop.status === "running") updateOverviewLive();
   } catch { /* 瞬时错误忽略 */ }
 }
 
@@ -387,7 +388,7 @@ function renderOverview(body) {
       ${banners.join("") || `<div class="rc-note-plain">本次运行无停止 / 失败原因记录。</div>`}
       ${latest ? `
         <div class="rc-cases-head" style="margin-top:16px">
-          <div class="rc-cmd-label" style="margin:0">运行结果</div>
+          <div class="rc-cmd-label" style="margin:0">运行结果${l.status === "running" ? ' <span class="badge running">实时</span>' : ""}</div>
           <span class="rc-spacer"></span>
           ${runs.length > 1 ? `<select class="select rc-run-select" id="rc-ov-run" title="loop 多轮时选择要查看的轮次">
             ${runs.map((j) => `<option value="${esc(j.run_id)}" ${j === latest ? "selected" : ""}>第 ${j.iteration} 轮 · ${esc(j.run_id)} · ${esc(j.status)}</option>`).join("")}
@@ -397,15 +398,45 @@ function renderOverview(body) {
           <thead><tr><th>Case</th><th>Result</th><th>Duration</th><th>Message</th><th></th></tr></thead>
           <tbody id="rc-cases-body"><tr><td colspan="5"><div class="rc-cases-empty">加载中…</div></td></tr></tbody>
         </table>
-        <div class="rc-cmd-label">材料 · Run ${esc(latest.run_id)}</div>
+        <div class="rc-cmd-label">材料 · Run ${esc(latest.run_id)}${l.status === "running" ? "（实时）" : ""}</div>
         <div id="rc-art-list"><div class="rc-cases-empty">加载中…</div></div>`
+      : l.status === "running" ? `
+        <div class="rc-cases-head" style="margin-top:16px">
+          <div class="rc-cmd-label" style="margin:0">运行结果 <span class="badge running">实时</span></div>
+        </div>
+        <table class="table">
+          <thead><tr><th>Case</th><th>Result</th><th>Duration</th><th>Message</th><th></th></tr></thead>
+          <tbody id="rc-cases-body"><tr><td colspan="5"><div class="rc-cases-empty">等待第一个 case 开始…</div></td></tr></tbody>
+        </table>
+        <div class="rc-cmd-label">材料 · 实时</div>
+        <div id="rc-art-list"><div class="rc-cases-empty">run 目录创建后实时显示</div></div>`
       : `<div class="rc-note-plain">尚无已完成的 run——iteration 结束后这里会显示 case 结果与材料。</div>`}
     </div>`;
-  if (!latest) return;
+  if (!latest) {
+    if (l.status === "running") updateOverviewLive();
+    return;
+  }
   const sel = $("#rc-ov-run", body);
   if (sel) sel.addEventListener("change", (e) => loadOverviewCases(e.target.value));
-  loadOverviewCases(latest.run_id);
+  if (l.status === "running") updateOverviewLive();
+  else loadOverviewCases(latest.run_id);
   loadArtifacts(latest.run_id);
+}
+
+/* 运行中：从 console 解析实时 case 状态 + 扫描当前 run 的材料（5s 轮询调用） */
+async function updateOverviewLive() {
+  if (state.tab !== "overview" || !state.loop || state.loop.status !== "running") return;
+  let d;
+  try {
+    d = await (await apiFetch(`/api/loops/${encodeURIComponent(state.loop.id)}/live-cases`)).json();
+  } catch { return; }
+  if (state.tab !== "overview" || !state.loop || state.loop.status !== "running") return;
+  const tb = $("#rc-cases-body");
+  if (tb && Array.isArray(d.cases) && d.cases.length) renderCasesBody(d.cases);
+  const list = $("#rc-art-list");
+  if (list && d.run_id && Array.isArray(d.artifacts) && d.artifacts.length) {
+    renderArtifactsInto(list, d.run_id, d.artifacts);
+  }
 }
 
 /* 概览内的 case 结果（loop 多轮时随轮次下拉切换） */
@@ -519,6 +550,10 @@ async function loadArtifacts(runId) {
     list.innerHTML = `<div class="rc-cases-empty">该 run 没有材料记录</div>`;
     return;
   }
+  renderArtifactsInto(list, runId, files);
+}
+
+function renderArtifactsInto(list, runId, files) {
   const fileUrl = (rel) => `/runs/${encodeURIComponent(runId)}/${rel.split("/").map(encodeURIComponent).join("/")}`;
   const byKind = {};
   for (const f of files) (byKind[f.kind] = byKind[f.kind] || []).push(f);
