@@ -2,7 +2,42 @@
 
 > 代码与文件已就绪。以下步骤需要 shell 通道与你的凭证，按顺序执行。
 
-## 1. 安装 MySQL 8（Windows 本机）
+## 0. 一键部署（推荐，新机器 / 实验室部署用）
+
+前提：目标机器已装 **Python 3.11+** 和 **MySQL 8**（Server 本体脚本不代装，
+未装时向导会给出指引；`winget install Oracle.MySQL` 或官网 MSI 均可）。
+
+双击项目根目录的 **`install.bat`**，它会自动完成：
+
+1. 建 `.venv` 虚拟环境并安装依赖（首次约 1-2 分钟）
+2. 首次运行弹出交互向导 `setup_wizard.py`：
+   - 输入 MySQL root 密码 → 自动建库 `runner_console`（utf8mb4）、
+     建用户 `runner`（密码可自动生成）、授权
+   - 交互确认 runner 仓库路径与管理员用户名 → 生成 `config.toml`
+   - 自动执行 schema 迁移（幂等，重跑无害）
+3. 启动服务 `0.0.0.0:8765`（局域网内办公室电脑直接访问 `http://<实验室机IP>:8765/`）
+
+日常运行再次双击 `install.bat` 即可（配置已存在则直接迁移 + 启动）。
+注意：本脚本窗口开着服务才在跑；要注册为 Windows 后台服务/开机自启，
+用 Task Scheduler 配一个开机运行 `install.bat`（最小化）的任务即可。
+
+### 配置文件在哪、有什么
+
+| 文件 | 作用 | 是否入库 |
+|---|---|---|
+| `config.example.toml` | 配置模板（含每个字段的中文注释） | 入库 |
+| `config.toml` | **本机实际配置**：数据库地址/账号密码、runner 仓库路径、产物路径、管理员名单、服务监听地址端口 | **不入库**（含密码，已在 .gitignore） |
+
+数据库连接信息就在 `config.toml` 的 `[database]` 段（host/port/user/password/database）；
+数据库本身只建一次（向导或手动 SQL），换机器部署 = 新机器上重跑 `install.bat`。
+
+### 打包成 exe（可选，尚未实施）
+
+可行且影响小（PyInstaller，onedir 形态，需适配 frontend/migrations 资源路径
+与 PROJECT_ROOT，约 10 行代码 + 一份 spec）。代价：打包后改前端需重新打包。
+建议源码 + install.bat 的方式部署，exe 方式待定后再做。
+
+## 1. 安装 MySQL 8（Windows 本机，手动方式）
 
 1. MySQL 8 Community（zip 版或 MSI 均可），root 密码自定。
 2. 建库：

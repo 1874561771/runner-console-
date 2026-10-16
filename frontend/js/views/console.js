@@ -344,7 +344,7 @@ function renderSummaryCard() {
         <span class="rc-spacer"></span>
         <button class="btn btn-ghost btn-sm" id="rc-btn-refresh" type="button">刷新</button>
       </div>
-      <div class="rc-loop-meta">${esc(l.env_name || "")} · ${esc(target)} · ${esc(l.owner_name || "")}</div>
+      <div class="rc-loop-meta">${esc(l.env_name || "")} · ${esc(target)} · ${esc(l.owner_name || "")} · 耗时 ${esc(fmtDuration(l))}</div>
       <div class="rc-loop-stats">
         <span>已运行 <b>${l.iterations ?? 0}</b></span>
         <span class="rc-stat-pass">Pass <b>${l.passed_iters ?? 0}</b></span>
