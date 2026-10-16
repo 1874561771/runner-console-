@@ -241,11 +241,14 @@ async function pollOnce() {
     const loop = data && data.loop;
     if (!loop) { state.loop = null; stopPolling(); renderRight(); return; }
     if (!state.loop || state.loop.id !== id) return; // 已切换
+    const statusChanged = state.loop.status !== loop.status;
     state.loop = loop;
     updateSummaryCard();
     updateEnvPill();
     setRunUI();
-    if (state.tab === "overview") renderTabBody();
+    // 仅在 loop 状态变化（如 running → done/stopped）时才重建概览区：
+    // 定时重建会销毁用户正在查看的内嵌 log / 截图 lightbox 并打断滚动
+    if (statusChanged && state.tab === "overview") renderTabBody();
   } catch { /* 瞬时错误忽略 */ }
 }
 
@@ -309,14 +312,18 @@ function updateSummaryCard() {
   const card = $("#rc-summary-card");
   if (!card) return;
   renderSummaryCard();
-  if (state.tab === "overview") renderTabBody();
 }
 
+let lastSummaryKey = "";
 function renderSummaryCard() {
   const card = $("#rc-summary-card");
   if (!card || !state.loop) return;
   const l = state.loop;
   const badge = loopBadge(l);
+  // 数据无变化时不重建 DOM（轮询 5s 一次，重建造成可见闪烁并打断交互）
+  const key = [l.id, l.status, l.iterations, l.passed_iters, l.fail_iters, badge.text].join("|");
+  if (key === lastSummaryKey && card.querySelector(".rc-loop-id")) return;
+  lastSummaryKey = key;
   const target = l.suite || l.test || "—";
   const total = l.repeat_total > 0 ? l.repeat_total : (l.iteration_statuses || []).length;
   let blocks = "";
