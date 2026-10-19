@@ -371,4 +371,5 @@
 
 /* ── 定时任务页 ── */
 .sch-rule-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sch-rule-row[hidden] { display: none; }
 .sch-rule-row .rc-sw-text { font-size: 12.5px; }

@@ -178,12 +178,19 @@ async function openEditor(existing) {
       <div class="field"><label>名称</label>
         <input class="input" id="sch-name" type="text" value="${esc(existing?.name || "")}" placeholder="如：每晚报关回归" autocomplete="off"/></div>
       <div class="field"><label>触发规则（服务器本机时间）</label>
-        <div class="sch-rule-row">
-          <label class="rc-switch"><input type="radio" name="sch-rule" value="daily" ${existing?.rule_type !== "once" ? "checked" : ""}/><span class="rc-track"></span><span class="rc-sw-text">每天</span></label>
-          <input class="input" id="sch-time" type="time" value="${esc(existing?.time || "08:30")}" style="width:120px"/>
-          <label class="rc-switch"><input type="radio" name="sch-rule" value="once" ${existing?.rule_type === "once" ? "checked" : ""}/><span class="rc-track"></span><span class="rc-sw-text">单次</span></label>
-          <input class="input" id="sch-runat" type="datetime-local" value="${esc((existing?.run_at || "").replace(" ", "T"))}" style="width:200px"/>
-        </div></div>
+        <div class="rc-seg" id="sch-seg-rule" style="margin-bottom:10px">
+          <button type="button" data-v="daily" class="${existing?.rule_type !== "once" ? "on" : ""}">每天</button>
+          <button type="button" data-v="once" class="${existing?.rule_type === "once" ? "on" : ""}">单次</button>
+        </div>
+        <div class="sch-rule-row" id="sch-row-daily" ${existing?.rule_type === "once" ? "hidden" : ""}>
+          <input class="input" id="sch-time" type="time" value="${esc(existing?.time || "08:30")}" style="width:130px"/>
+          <span class="faint" style="font-size:12px">到点自动运行</span>
+        </div>
+        <div class="sch-rule-row" id="sch-row-once" ${existing?.rule_type === "once" ? "" : "hidden"}>
+          <input class="input" id="sch-runat" type="datetime-local" value="${esc((existing?.run_at || "").replace(" ", "T"))}" style="width:220px"/>
+          <span class="faint" style="font-size:12px">该时间点运行一次后自动停用</span>
+        </div>
+      </div>
       <div class="field"><label>环境</label>
         <select class="select" id="sch-env">${envOpts || `<option value="">（无可用环境）</option>`}</select></div>
       <div class="field"><label>分支（每次运行取该分支当时最新）</label>
@@ -240,10 +247,21 @@ async function openEditor(existing) {
   applyMode();
 
   modal.root.querySelector('[data-act="cancel"]').addEventListener("click", modal.close);
+  // 规则段选：每天 / 单次
+  let ruleType = existing?.rule_type === "once" ? "once" : "daily";
+  const rowDaily = modal.root.querySelector("#sch-row-daily");
+  const rowOnce = modal.root.querySelector("#sch-row-once");
+  modal.root.querySelectorAll("#sch-seg-rule button").forEach((b) =>
+    b.addEventListener("click", () => {
+      modal.root.querySelectorAll("#sch-seg-rule button").forEach((x) => x.classList.remove("on"));
+      b.classList.add("on");
+      ruleType = b.dataset.v;
+      rowDaily.hidden = ruleType !== "daily";
+      rowOnce.hidden = ruleType !== "once";
+    }));
   modal.root.querySelector('[data-act="save"]').addEventListener("click", async () => {
     const name = modal.root.querySelector("#sch-name").value.trim();
     if (!name) { toast("请输入名称", "error"); return; }
-    const ruleType = modal.root.querySelector('input[name=sch-rule]:checked').value;
     const time = modal.root.querySelector("#sch-time").value;
     const runAt = modal.root.querySelector("#sch-runat").value.replace("T", " ");
     if (ruleType === "daily" && !time) { toast("请选择每天运行的时间", "error"); return; }

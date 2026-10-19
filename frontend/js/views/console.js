@@ -245,22 +245,41 @@ function openScheduleFromForm() {
       <div class="field"><label>名称</label>
         <input class="input" id="schq-name" type="text" placeholder="如：每晚报关回归" autocomplete="off"/></div>
       <div class="field"><label>触发规则（服务器本机时间）</label>
-        <div class="sch-rule-row">
-          <label class="rc-switch"><input type="radio" name="schq-rule" value="daily" checked/><span class="rc-track"></span><span class="rc-sw-text">每天</span></label>
-          <input class="input" id="schq-time" type="time" value="08:30" style="width:110px"/>
-          <label class="rc-switch"><input type="radio" name="schq-rule" value="once"/><span class="rc-track"></span><span class="rc-sw-text">单次</span></label>
-          <input class="input" id="schq-runat" type="datetime-local" style="width:190px"/>
-        </div></div>
+        <div class="rc-seg" id="schq-seg-rule" style="margin-bottom:10px">
+          <button type="button" data-v="daily" class="on">每天</button>
+          <button type="button" data-v="once">单次</button>
+        </div>
+        <div class="sch-rule-row" id="schq-row-daily">
+          <input class="input" id="schq-time" type="time" value="08:30" style="width:130px"/>
+          <span class="faint" style="font-size:12px">到点自动运行</span>
+        </div>
+        <div class="sch-rule-row" id="schq-row-once" hidden>
+          <input class="input" id="schq-runat" type="datetime-local" style="width:220px"/>
+          <span class="faint" style="font-size:12px">该时间点运行一次后自动停用</span>
+        </div>
+      </div>
       <p class="faint" style="font-size:12px;margin:0">快照 = 当前运行台表单（环境 / 分支 / 目标 / 次数 / 固件）。
         分支类目标每次运行取该分支当时最新；到点设备忙时自动排队。任务在「定时任务」页管理。</p>`,
     footer: `<button type="button" class="btn btn-ghost" data-act="cancel">取消</button>
              <button type="button" class="btn btn-primary" data-act="save">创建定时任务</button>`,
   });
   m.root.querySelector('[data-act="cancel"]').addEventListener("click", m.close);
+  // 规则段选：每天 / 单次（切换显示对应输入）
+  let schqRule = "daily";
+  const rowDaily = m.root.querySelector("#schq-row-daily");
+  const rowOnce = m.root.querySelector("#schq-row-once");
+  m.root.querySelectorAll("#schq-seg-rule button").forEach((b) =>
+    b.addEventListener("click", () => {
+      m.root.querySelectorAll("#schq-seg-rule button").forEach((x) => x.classList.remove("on"));
+      b.classList.add("on");
+      schqRule = b.dataset.v;
+      rowDaily.hidden = schqRule !== "daily";
+      rowOnce.hidden = schqRule !== "once";
+    }));
   m.root.querySelector('[data-act="save"]').addEventListener("click", async () => {
     const name = m.root.querySelector("#schq-name").value.trim();
     if (!name) { toast("请输入名称", true); return; }
-    const ruleType = m.root.querySelector('input[name=schq-rule]:checked').value;
+    const ruleType = schqRule;
     const time = m.root.querySelector("#schq-time").value;
     const runAt = m.root.querySelector("#schq-runat").value.replace("T", " ");
     if (ruleType === "daily" && !time) { toast("请选择每天运行的时间", true); return; }
