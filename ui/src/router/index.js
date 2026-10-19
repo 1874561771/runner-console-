@@ -8,7 +8,7 @@ const routes = [
     component: () => import("../layouts/MainLayout.vue"),
     children: [
       { path: "", redirect: "/console" },
-      { path: "console", name: "console", component: () => import("../views/PlaceholderView.vue"), meta: { title: "运行台" } },
+      { path: "console", name: "console", component: () => import("../views/ConsoleView.vue"), meta: { title: "运行台" } },
       { path: "schedules", name: "schedules", component: () => import("../views/PlaceholderView.vue"), meta: { title: "定时任务" } },
       { path: "tasks", name: "tasks", component: () => import("../views/PlaceholderView.vue"), meta: { title: "任务中心" } },
       { path: "dashboard", name: "dashboard", component: () => import("../views/PlaceholderView.vue"), meta: { title: "数据看板" } },
