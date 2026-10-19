@@ -84,21 +84,27 @@ function emitUpdate() {
         <div v-if="error" class="cp-loading">{{ error }}</div>
         <div v-else-if="!groups.length && !loading" class="cp-loading">该分支下没有 case</div>
         <div v-for="g in visibleGroups" :key="g.feature" class="cp-group">
-          <n-checkbox
-            :checked="g.cases.every((c) => selectedSet.has(c))"
-            :indeterminate="g.cases.some((c) => selectedSet.has(c)) && !g.cases.every((c) => selectedSet.has(c))"
-            @update:checked="(on) => toggleGroup(g, on)"
-          >
-            <span class="cp-feat mono">{{ g.feature }}</span>
-            <span class="faint">({{ g.cases.length }})</span>
-          </n-checkbox>
-          <n-checkbox
-            v-for="c in g.cases" :key="c"
-            :checked="selectedSet.has(c)"
-            @update:checked="(on) => toggle(c, on)"
-          >
-            <span class="cp-path">{{ c.split('/').pop() }}</span>
-          </n-checkbox>
+          <div class="cp-group-head">
+            <n-checkbox
+              size="small"
+              :checked="g.cases.every((c) => selectedSet.has(c))"
+              :indeterminate="g.cases.some((c) => selectedSet.has(c)) && !g.cases.every((c) => selectedSet.has(c))"
+              @update:checked="(on) => toggleGroup(g, on)"
+            >
+              <span class="cp-feat mono">{{ g.feature }}</span>
+              <span class="faint">({{ g.cases.length }})</span>
+            </n-checkbox>
+          </div>
+          <div class="cp-cases">
+            <n-checkbox
+              v-for="c in g.cases" :key="c"
+              size="small" class="cp-case"
+              :checked="selectedSet.has(c)"
+              @update:checked="(on) => toggle(c, on)"
+            >
+              <span class="cp-path">{{ c.split('/').pop() }}</span>
+            </n-checkbox>
+          </div>
         </div>
       </div>
     </n-spin>
@@ -110,9 +116,16 @@ function emitUpdate() {
 .cp-toolbar { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--line-soft); }
 .cp-toolbar .n-input { flex: 1; }
 .cp-count { font-size: 11.5px; flex: none; white-space: nowrap; }
-.cp-body { overflow-y: auto; padding: 6px 10px 10px; }
+.cp-body { overflow-y: auto; padding: 0 0 10px; }
 .cp-loading { padding: 18px 0; text-align: center; color: var(--ink-3); font-size: 12.5px; }
-.cp-group { margin-top: 6px; }
+.cp-group { margin-top: 8px; }
+.cp-group-head {
+  background: var(--surface-sub); border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+  padding: 5px 10px;
+}
+.cp-feat { font-size: 12px; font-weight: 600; }
+.cp-cases { padding: 4px 0 2px 28px; }
+.cp-case { display: flex; margin: 2px 0; }
 .cp-path { font-size: 12.5px; }
-.cp-dir { font-size: 11px; margin-left: 8px; }
 </style>

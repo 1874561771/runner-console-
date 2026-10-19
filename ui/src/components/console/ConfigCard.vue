@@ -3,7 +3,7 @@
 import { ref, computed } from "vue";
 import {
   NCard, NSelect, NInput, NInputNumber, NSwitch, NButton, NTabs, NTabPane,
-  NCheckbox, NModal, NForm, NFormItem, NTimePicker, NDatePicker, useMessage,
+  NModal, NForm, NFormItem, NTimePicker, NDatePicker, useMessage,
 } from "naive-ui";
 import { useConsoleStore } from "../../stores/consoleStore.js";
 import { apiFetch } from "../../api/client.js";
@@ -203,15 +203,23 @@ async function saveSuite() {
         <span class="mono x">×</span>
         <n-input-number v-model:value="f.repeat" size="small" :min="1" :disabled="f.unlimited" style="width: 84px" />
       </div>
-      <n-checkbox v-model:checked="f.unlimited">无限循环</n-checkbox>
+      <n-button
+        class="tgl" block size="small"
+        :type="f.unlimited ? 'primary' : 'default'" :secondary="!f.unlimited"
+        @click="f.unlimited = !f.unlimited"
+      >{{ f.unlimited ? "✓ 无限循环" : "无限循环" }}</n-button>
     </div>
-    <div class="fld row">
-      <n-switch v-model:value="f.pauseOnFail" size="small" />
-      <span class="sw-text">Pause on fail（失败暂停）</span>
-    </div>
-    <div class="fld row">
-      <n-switch v-model:value="f.headless" size="small" />
-      <span class="sw-text">跳过 Job setup / teardown</span>
+    <div class="fld toggles">
+      <n-button
+        block size="small"
+        :type="f.pauseOnFail ? 'primary' : 'default'" :secondary="!f.pauseOnFail"
+        @click="f.pauseOnFail = !f.pauseOnFail"
+      >{{ f.pauseOnFail ? "✓ " : "" }}Pause on fail（失败暂停）</n-button>
+      <n-button
+        block size="small"
+        :type="f.headless ? 'primary' : 'default'" :secondary="!f.headless"
+        @click="f.headless = !f.headless"
+      >{{ f.headless ? "✓ " : "" }}跳过 Job setup / teardown</n-button>
     </div>
 
     <div class="grp-label">命令预览</div>
@@ -269,10 +277,11 @@ async function saveSuite() {
 }
 .fld { margin-bottom: 8px; }
 .fld-label { font-size: 12px; color: var(--ink-2); margin-bottom: 4px; }
-.fld.row { display: flex; align-items: center; gap: 10px; min-height: 26px; }
-.repeat-box { display: flex; align-items: center; gap: 4px; }
+.fld.row { display: flex; align-items: center; gap: 8px; min-height: 26px; }
+.fld.row .tgl { flex: 1; }
+.fld.toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.repeat-box { display: flex; align-items: center; gap: 4px; flex: none; }
 .x { color: var(--ink-3); }
-.sw-text { font-size: 12.5px; color: var(--ink-2); }
 .cmd {
   background: var(--surface-sub); border: 1px solid var(--line-soft); border-radius: 6px;
   padding: 9px 11px; font-size: 10.5px; line-height: 1.6; word-break: break-all; user-select: all;
