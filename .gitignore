@@ -16,3 +16,7 @@ data_*.log
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Vue 前端（P0+）
+ui/node_modules/
+ui/dist/

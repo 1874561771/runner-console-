@@ -158,6 +158,13 @@ def create_app() -> FastAPI:
             return FileResponse(path, media_type="image/svg+xml")
         raise HTTPException(status_code=404)
 
+    # Vue 新前端（P0+）：构建产物 ui/dist 挂在 /v2/（迁移期旧前端仍在 /）
+    ui_dist = PROJECT_ROOT / "ui" / "dist"
+    if ui_dist.is_dir():
+        app.mount("/v2", StaticFiles(directory=str(ui_dist), html=True), name="ui-v2")
+    else:
+        logger.info("ui/dist 不存在，/v2/ 暂不可用（npm run build 后生效）")
+
     # 静态前端必须最后挂载："/" 通配，先注册的 /api 路由优先匹配
     if FRONTEND_DIR.is_dir():
         app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")

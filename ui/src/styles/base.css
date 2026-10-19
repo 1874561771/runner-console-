@@ -1,0 +1,65 @@
+/* 基础样式：延续旧版 design-tokens 的页面基调 */
+:root {
+  --bg: #f4f4ef;
+  --surface: #ffffff;
+  --surface-sub: #fafaf8;
+  --ink: #1a1d20;
+  --ink-2: #5f646b;
+  --ink-3: #8a8f96;
+  --line: #e3e4dc;
+  --line-soft: #edeee6;
+  --accent: #d9480f;
+  --accent-hover: #b23a0b;
+  --accent-soft: #fdeee6;
+  --font-mono: "JetBrains Mono", "Sarasa Gothic SC", Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 13.5px;
+}
+a { color: var(--accent-hover); text-decoration: none; }
+.mono { font-family: var(--font-mono); }
+.faint { color: var(--ink-3); }
+
+/* ── 布局 ── */
+.app-shell { display: flex; flex-direction: column; height: 100%; }
+.app-topbar {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--ink); color: #f0f1ee;
+  padding: 0 18px; height: 46px; flex: none;
+}
+.app-topbar .brand { font-weight: 700; letter-spacing: .5px; font-size: 14px; }
+.app-topbar .spacer { flex: 1; }
+.app-topbar .user { font-size: 12.5px; opacity: .85; font-family: var(--font-mono); }
+.app-main { display: flex; flex: 1; min-height: 0; }
+.app-nav {
+  width: 148px; flex: none;
+  background: var(--surface); border-right: 1px solid var(--line);
+  padding: 14px 10px; display: flex; flex-direction: column; gap: 4px;
+}
+.app-nav a {
+  display: block; padding: 8px 12px; border-radius: 6px;
+  color: var(--ink-2); font-size: 13px; text-decoration: none;
+}
+.app-nav a:hover { background: var(--surface-sub); color: var(--ink); }
+.app-nav a.router-link-active { background: var(--accent-soft); color: var(--accent-hover); font-weight: 600; }
+.app-content { flex: 1; min-width: 0; overflow-y: auto; padding: 18px 22px; }
+
+/* ── 登录页 ── */
+.login-wrap {
+  height: 100%; display: flex; align-items: center; justify-content: center;
+  background: var(--ink);
+}
+.login-card { width: 360px; }
+.login-title { color: #f0f1ee; font-size: 20px; font-weight: 700; margin: 0 0 6px; }
+.login-sub { color: #8a8f96; font-size: 12.5px; margin: 0 0 18px; }
+
+.view-title { font-size: 18px; font-weight: 700; margin: 0 0 14px; }
+.view-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.view-head .view-title { margin: 0; }
+.view-head .spacer { flex: 1; }
