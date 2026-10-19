@@ -143,6 +143,11 @@ def create_app() -> FastAPI:
         )
         if not request.url.path.startswith("/api"):
             response.headers["Cache-Control"] = "no-cache"
+            if request.url.path in ("/", "/index.html"):
+                # 文档层禁存 + 让浏览器清空本站 HTTP 缓存：
+                # 旧版本曾被浏览器长期缓存（模块 JS 不重新校验），用户看不到更新
+                response.headers["Cache-Control"] = "no-store"
+                response.headers["Clear-Site-Data"] = '"cache"'
         return response
 
     @app.get("/favicon.ico", include_in_schema=False)
