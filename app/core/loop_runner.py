@@ -224,6 +224,7 @@ class LoopRunner:
             self._append_console(f"\n[loop error] {exc}\n")
         finally:
             # 原版 finally 中的 prune_artifacts 同样移除（T6）。
+            self._cleanup_tmp_overlays()
             self._cleanup(reason)
 
     # ------------------------------------------------------- one iteration
@@ -464,6 +465,25 @@ class LoopRunner:
             pass
 
     # ----------------------------------------------------------- cleanup
+
+    def _cleanup_tmp_overlays(self) -> None:
+        """删除 data/console/tmp 下的临时 overlay 源文件（勾选 Case 生成的临时 suite）。
+
+        worktree 内的副本随 worktree 清理消失；这里的源文件若不删会积压。
+        只删 console tmp 目录内的，uploads 等其它 overlay 源不受影响。
+        """
+        try:
+            from app.api.common import console_dir  # 局部导入避免环
+
+            tmp_root = (console_dir() / "tmp").resolve()
+        except Exception:
+            return
+        for _rel, src in self.overlays:
+            try:
+                if tmp_root in src.resolve().parents:
+                    src.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def _cleanup(self, reason: str) -> None:
         self._append_console(

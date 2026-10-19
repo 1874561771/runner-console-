@@ -32,13 +32,16 @@ from app.api import (
     files_routes,
     loops_routes,
     runs_routes,
+    schedules_routes,
     stats_routes,
     status_routes,
     sse_routes,
+    suites_routes,
     uploads_routes,
 )
 from app.config import get_settings
 from app.core.job_manager import init_job_manager
+from app.core.scheduler import get_scheduler
 from app.db import pool
 
 logger = logging.getLogger("runnerconsole")
@@ -72,7 +75,11 @@ async def lifespan(_app: FastAPI):
     threading.Thread(
         target=_startup_retention, daemon=True, name="startup-retention"
     ).start()
+    # 定时任务调度器（T16）：30s 扫描到期任务，忙则排队，重启自恢复
+    get_scheduler().start()
+    logger.info("scheduler started (tick=30s)")
     yield
+    get_scheduler().stop()
 
 
 def _startup_retention() -> None:
@@ -100,6 +107,9 @@ def create_app() -> FastAPI:
     app.include_router(stats_routes.router)
     app.include_router(status_routes.router)
     app.include_router(files_routes.router)
+    # T16/T17：定时任务 + 保存的套件
+    app.include_router(schedules_routes.router)
+    app.include_router(suites_routes.router)
 
     # 全局 DB 异常 → 500 JSON（不向客户端泄漏 SQL 细节，完整堆栈进日志）
     @app.exception_handler(pymysql.MySQLError)

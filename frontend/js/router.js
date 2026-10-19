@@ -7,6 +7,7 @@ import { store } from "./store.js";
 
 const routes = {
   console:   () => import("./views/console.js"),
+  schedules: () => import("./views/schedules.js"),
   tasks:     () => import("./views/tasks.js"),
   dashboard: () => import("./views/dashboard.js"),
   resources: () => import("./views/resources.js"),

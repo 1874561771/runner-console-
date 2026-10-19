@@ -6,27 +6,41 @@
    ═══════════════════════════════════════════════════════════════ */
 import { apiFetch } from "../api.js";
 import { store } from "../store.js";
+import { mountCasePicker } from "../casepicker.js";
 import { esc, toast, openModal, confirmDialog, skeletonRows, emptyState } from "../ui.js";
 
 let viewEl = null;
 let tab = "envs";
 let envs = [];
 let uploads = [];
+let suites = [];
+
+/* 勾选器 / 套件样式在 console.css 内，本页也注入 */
+function ensureCss() {
+  if (document.getElementById("rc-console-css")) return;
+  const link = document.createElement("link");
+  link.id = "rc-console-css";
+  link.rel = "stylesheet";
+  link.href = "css/console.css";
+  document.head.appendChild(link);
+}
 
 export async function render(el) {
   viewEl = el;
   tab = "envs";
+  ensureCss();
   el.innerHTML = `
     <div class="view-head">
       <div>
         <h1 class="view-title">资源</h1>
-        <div class="view-sub">环境与上传的 suite / 脚本</div>
+        <div class="view-sub">环境、上传的 suite / 脚本、保存的套件</div>
       </div>
       <button type="button" class="btn btn-primary" id="btn-new-env">+ 新建环境</button>
     </div>
     <div class="rc-tabs" role="tablist">
       <button type="button" class="rc-tab active" data-tab="envs">环境</button>
       <button type="button" class="rc-tab" data-tab="uploads">我的上传</button>
+      <button type="button" class="rc-tab" data-tab="suites">我的套件</button>
     </div>
     <div id="res-body">${skeletonRows(4, 5)}</div>`;
 
@@ -43,7 +57,8 @@ function switchTab(next) {
   viewEl.querySelectorAll(".rc-tab").forEach((b) =>
     b.classList.toggle("active", b.dataset.tab === tab));
   if (tab === "envs") loadEnvs();
-  else loadUploads();
+  else if (tab === "uploads") loadUploads();
+  else loadSuites();
 }
 
 /* ═══ 环境 ═════════════════════════════════════════════════ */
@@ -365,4 +380,108 @@ async function uploadFiles(files) {
   toast(ok === files.length ? `已上传 ${ok} 个文件` : `已上传 ${ok}/${files.length} 个文件`,
     ok === files.length ? "" : "error");
   loadUploads();
+}
+
+/* ═══ 我的套件（勾选 Case 集合的命名保存）═══════════════════ */
+
+async function loadSuites() {
+  const body = viewEl.querySelector("#res-body");
+  if (!body) return;
+  body.innerHTML = skeletonRows(3, 4);
+  try {
+    const res = await apiFetch("/api/suites");
+    suites = await res.json();
+    if (!res.ok) throw new Error(suites.error || "加载失败");
+    if (!Array.isArray(suites)) suites = [];
+  } catch (err) {
+    body.innerHTML = emptyState("套件加载失败", err.message || "请稍后重试");
+    return;
+  }
+  body.innerHTML = `
+    <div style="margin:0 0 10px">
+      <button type="button" class="btn btn-primary btn-sm" id="suite-new">＋ 新建套件</button>
+      <span class="faint" style="font-size:11.5px;margin-left:10px">套件 = 勾选的 case 集合；运行时按所选分支当时的内容生成临时 suite，任务结束后删除</span>
+    </div>
+    ${suites.length ? `<div class="card"><table class="table">
+      <thead><tr>
+        <th>名称</th><th>Case 数</th><th>更新时间</th><th style="text-align:right">操作</th>
+      </tr></thead>
+      <tbody>${suites.map((s) => `<tr>
+        <td><div class="mono" style="font-weight:600">${esc(s.name)}</div></td>
+        <td class="mono">${s.cases.length}</td>
+        <td class="mono faint">${esc(s.updated_at || "")}</td>
+        <td><div class="row-actions">
+          <button type="button" class="btn btn-ghost btn-sm" data-edit="${esc(s.id)}">编辑</button>
+          <button type="button" class="btn btn-danger btn-sm" data-del="${esc(s.id)}">删除</button>
+        </div></td>
+      </tr>`).join("")}</tbody></table></div>`
+      : emptyState("还没有套件", "在运行台选「勾选 Case」模式勾选后「另存为套件」，或点上面「新建套件」")}`;
+
+  body.querySelector("#suite-new").addEventListener("click", () => openSuiteModal(null));
+  body.querySelectorAll("[data-edit]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const s = suites.find((x) => x.id === btn.dataset.edit);
+      if (s) openSuiteModal(s);
+    }));
+  body.querySelectorAll("[data-del]").forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      const s = suites.find((x) => x.id === btn.dataset.del);
+      if (!s) return;
+      const ok = await confirmDialog({
+        title: "删除套件",
+        message: `确定删除套件 <b>${esc(s.name)}</b>（${s.cases.length} cases）？`,
+        danger: true, okText: "删除",
+      });
+      if (!ok) return;
+      try {
+        const res = await apiFetch(`/api/suites/${s.id}`, { method: "DELETE" });
+        const d = await res.json();
+        if (!res.ok || d.error) throw new Error(d.error || "删除失败");
+        toast("已删除");
+        loadSuites();
+      } catch (err) { toast(err.message || "删除失败", "error"); }
+    }));
+}
+
+/* 新建 / 编辑套件（勾选器选 case） */
+function openSuiteModal(s) {
+  const isEdit = !!s;
+  const m = openModal({
+    title: isEdit ? `编辑套件 · ${s.name}` : "新建套件",
+    width: 640,
+    body: `
+      <div class="field"><label>名称</label>
+        <input class="input" id="su-name" value="${isEdit ? esc(s.name) : ""}" placeholder="如：报关冒烟集" autocomplete="off"/></div>
+      <div class="field"><label>勾选 Case <span class="faint">（基于当前 HEAD 分支展示，运行时按所选分支解析）</span></label>
+        <div id="su-picker"></div></div>`,
+    footer: `<button type="button" class="btn btn-ghost" data-act="cancel">取消</button>
+             <button type="button" class="btn btn-primary" data-act="save">${isEdit ? "保存" : "创建"}</button>`,
+  });
+  let cases = isEdit ? [...s.cases] : [];
+  const picker = mountCasePicker(m.root.querySelector("#su-picker"), {
+    ref: "HEAD",
+    product: "firebox",
+    selected: cases,
+    onChange: (set) => { cases = [...set]; },
+    height: 240,
+  });
+  m.root.querySelector('[data-act="cancel"]').addEventListener("click", () => { picker.destroy(); m.close(); });
+  m.root.querySelector('[data-act="save"]').addEventListener("click", async () => {
+    const name = m.root.querySelector("#su-name").value.trim();
+    if (!name) { toast("请输入套件名称", "error"); return; }
+    if (!cases.length) { toast("请勾选至少一个 case", "error"); return; }
+    try {
+      const res = await apiFetch(isEdit ? `/api/suites/${s.id}` : "/api/suites", {
+        method: isEdit ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, product: "firebox", cases }),
+      });
+      const d = await res.json();
+      if (!res.ok || d.error) throw new Error(d.error || "保存失败");
+      toast(isEdit ? "套件已更新" : `已创建套件「${name}」`);
+      picker.destroy();
+      m.close();
+      loadSuites();
+    } catch (err) { toast(err.message || "保存失败", "error"); }
+  });
 }

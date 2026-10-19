@@ -28,13 +28,11 @@ from app.api.common import (
     fmt_dt,
     parse_days,
     parse_int,
-    upload_abs_path,
 )
 from app.api.deps import get_current_user
 from app.auth import perms
+from app.core import run_service
 from app.core.job_manager import (
-    PRODUCTS,
-    LoopStartError,
     LoopStopError,
     get_job_manager,
 )
@@ -243,76 +241,15 @@ def get_loop_status(loop_id: str, user: dict = Depends(get_current_user)) -> dic
 
 @router.post("/run", status_code=201)
 def run(body: RunIn, user: dict = Depends(get_current_user)) -> dict:
-    manager = get_job_manager()
-
-    env_row = pool.query_one(
-        "SELECT * FROM environments WHERE id = %s", (body.env_id,)
-    )
-    if env_row is None:
-        raise HTTPException(status_code=404, detail="环境不存在")
-    if env_row.get("disabled"):
-        raise HTTPException(status_code=400, detail="环境已停用，不能运行")
-    if not perms.can_operate_env(user, body.env_id):
-        raise HTTPException(status_code=403, detail="forbidden")
-
-    params = {
-        "product": (body.product or "").strip(),
-        "suite": (body.suite or "").strip(),
-        "test": (body.test or "").strip(),
-        "git_ref": body.git_ref,
-        "headless": bool(body.headless),
-        "branch": body.branch,
-        "build": body.build,
-        "pause_on_fail": bool(body.pause_on_fail),
-        "source": body.source if body.source in ("repo", "upload") else "repo",
-    }
-    if params["product"] not in PRODUCTS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"product 必须是：{', '.join(PRODUCTS)}",
-        )
-
-    overlays: list[tuple[str, Path]] = []
-    if params["source"] == "upload":
-        up = pool.query_one(
-            "SELECT * FROM uploads WHERE id = %s", (body.upload_id or "",)
-        )
-        if up is None:
-            raise HTTPException(status_code=404, detail="上传件不存在")
-        if not perms.can_access_owner(user, up.get("owner_id")):
-            raise HTTPException(status_code=403, detail="forbidden")
-        # 我的测试：suite 用名称（去扩展名）、script 用 overlay 相对路径
-        #（= 上传文件名；DB relpath 是 '<user>/<uid>/<name>' 存储路径，不能直接当 CLI 参数）
-        rel_name = Path(str(up["relpath"])).name
-        if up["kind"] == "suite":
-            # runner 在 <worktree>/suites/ 下找 suite（--suite 先补 .txt 再用原名），
-            # overlay 必须复制到 suites/ 内而不是 worktree 根
-            params["suite"] = Path(str(up["name"])).stem
-            overlays = [(f"suites/{rel_name}", upload_abs_path(up))]
-        else:
-            params["test"] = rel_name
-            overlays = [(rel_name, upload_abs_path(up))]
-
-    if not params["suite"] and not params["test"]:
-        raise HTTPException(status_code=400, detail="suite / test 至少填一个")
-
-    repeat = body.repeat if body.repeat is not None else 1
-    if repeat < 0:
-        raise HTTPException(status_code=400, detail="repeat 不能为负数（0=无限）")
-
+    # 参数校验 / cases→临时 suite / overlay 组装 / manager.start 全部在
+    # run_service.do_start_run（与定时任务调度共用同一入口）
     try:
-        result = manager.start(
-            user=user,
-            env_row=env_row,
-            params=params,
-            repeat=int(repeat),
-            overlays=overlays,
-        )
-    except LoopStartError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail={"detail": str(exc), "holder": exc.holder, "error": str(exc)},
-        ) from exc
+        result = run_service.do_start_run(user, body)
+    except run_service.RunError as exc:
+        detail: object = exc.detail
+        if exc.status == 409:
+            detail = {"detail": exc.detail, "holder": exc.holder, "error": exc.detail}
+        raise HTTPException(status_code=exc.status, detail=detail) from exc
     return {
         "loop_id": result["loop_id"],
         "command": result["command"],

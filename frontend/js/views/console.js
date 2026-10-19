@@ -5,6 +5,7 @@
    轮询 5s /api/loops/{id}/status；SSE 控制台流 openConsoleStream。
    ═══════════════════════════════════════════════════════════════ */
 import { apiFetch, openConsoleStream } from "../api.js";
+import { mountCasePicker } from "../casepicker.js";
 
 /* ── 视图生命周期：router 直接 innerHTML 替换，本模块自行清理 ── */
 let disposers = [];
@@ -24,11 +25,13 @@ const state = {
   config: { products: [], branches: [], suites: [], tests: [] },
   envs: [],
   uploads: [],
+  suitesSaved: [],   // 保存的套件（/api/suites）
   loops: [],          // 最近任务列表（/api/loops，最新在前）
   envId: "",
   form: {
     product: "firebox", source: "repo", gitRef: "HEAD", uploadId: "",
     targetMode: "suite", suite: "", test: "",
+    cases: [], savedSuiteId: "",       // 勾选 Case 模式
     repeat: 1, unlimited: false, pauseOnFail: false, headless: false,
     fwBranch: "", fwBuild: "",
   },
@@ -71,7 +74,12 @@ function buildCommand() {
   const notes = [];
   if (f.source === "repo") {
     if (f.targetMode === "suite") f.suite ? parts.push(`--suite ${f.suite}`) : notes.push("未选择 Suite");
-    else f.test ? parts.push(`--test ${f.test}`) : notes.push("未选择 Test");
+    else if (f.targetMode === "test") f.test ? parts.push(`--test ${f.test}`) : notes.push("未选择 Test");
+    else if (f.targetMode === "cases") {
+      f.cases.length
+        ? parts.push(`--suite （勾选 ${f.cases.length} case → 运行时生成临时套件）`)
+        : notes.push("未勾选 Case");
+    }
   } else {
     const up = state.uploads.find((u) => u.id === f.uploadId);
     if (!up) notes.push("未选择我的测试");
@@ -106,6 +114,7 @@ function runParams() {
     upload_id: f.source === "upload" ? f.uploadId : "",
     suite: f.source === "repo" && f.targetMode === "suite" ? f.suite : "",
     test: f.source === "repo" && f.targetMode === "test" ? f.test : "",
+    cases: f.source === "repo" && f.targetMode === "cases" ? f.cases : [],
     headless: f.headless,
     branch: f.fwBranch,
     build: f.fwBuild,
@@ -197,6 +206,7 @@ async function onRun() {
   if (!state.envId) { toast("请先选择环境", true); return; }
   if (f.source === "repo" && f.targetMode === "suite" && !f.suite) { toast("请选择 Suite", true); return; }
   if (f.source === "repo" && f.targetMode === "test" && !f.test) { toast("请选择 Test", true); return; }
+  if (f.source === "repo" && f.targetMode === "cases" && !f.cases.length) { toast("请勾选至少一个 Case", true); return; }
   if (f.source === "upload" && !f.uploadId) { toast("请选择我的测试", true); return; }
   const btn = $("#rc-btn-run");
   btn.disabled = true;
@@ -700,6 +710,29 @@ function applySourceMode() {
   $("#rc-field-target").hidden = !repo;
   $("#rc-field-suite").hidden = !repo || state.form.targetMode !== "suite";
   $("#rc-field-test").hidden = !repo || state.form.targetMode !== "test";
+  const casesOn = repo && state.form.targetMode === "cases";
+  $("#rc-field-cases").hidden = !casesOn;
+  if (casesOn && !casePicker) mountCasesPicker();
+  else if (!casesOn && casePicker) { casePicker.destroy(); casePicker = null; }
+}
+
+/* 勾选 Case 模式：挂载共享勾选器 + 已保存套件联动 */
+let casePicker = null;
+
+function mountCasesPicker() {
+  const box = $("#rc-cases-picker");
+  if (!box) return;
+  $("#rc-cases-ref").textContent = state.form.gitRef || "HEAD";
+  casePicker = mountCasePicker(box, {
+    ref: state.form.gitRef || "HEAD",
+    product: state.form.product,
+    selected: state.form.cases,
+    onChange: (set) => {
+      state.form.cases = [...set];
+      updatePreview();
+    },
+  });
+  onDispose(() => { casePicker?.destroy(); casePicker = null; });
 }
 
 function segWire(id, key, after) {
@@ -721,10 +754,44 @@ function wireConfigForm() {
   // 按 Suite / 按 Test
   segWire("rc-seg-target", "targetMode", applySourceMode);
   // git_ref / 上传下拉
-  $("#rc-sel-git").addEventListener("change", (e) => { state.form.gitRef = e.target.value; updatePreview(); });
+  $("#rc-sel-git").addEventListener("change", (e) => {
+    state.form.gitRef = e.target.value;
+    casePicker?.setRef(state.form.gitRef);
+    const refLabel = $("#rc-cases-ref");
+    if (refLabel) refLabel.textContent = state.form.gitRef;
+    updatePreview();
+  });
   $("#rc-sel-upload").addEventListener("change", (e) => { state.form.uploadId = e.target.value; updatePreview(); });
   $("#rc-sel-suite").addEventListener("change", (e) => { state.form.suite = e.target.value; updatePreview(); });
   $("#rc-sel-test").addEventListener("change", (e) => { state.form.test = e.target.value; updatePreview(); });
+  // 已保存套件选用 → 展开为勾选集合
+  $("#rc-sel-savedsuite").addEventListener("change", (e) => {
+    state.form.savedSuiteId = e.target.value;
+    const s = state.suitesSaved.find((x) => x.id === e.target.value);
+    state.form.cases = s ? [...s.cases] : [];
+    if (casePicker) casePicker.setSelected(state.form.cases);
+    updatePreview();
+    if (s) toast(`已套用套件「${s.name}」（${s.cases.length} cases）`);
+  });
+  // 另存为套件
+  $("#rc-btn-savesuite").addEventListener("click", async () => {
+    if (!state.form.cases.length) { toast("先勾选 case 再保存", true); return; }
+    const name = $("#rc-in-suitename").value.trim();
+    if (!name) { toast("请输入套件名称", true); return; }
+    try {
+      const res = await apiFetch("/api/suites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, product: state.form.product, cases: state.form.cases }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) { toast(data.error || "保存失败", true); return; }
+      state.suitesSaved = await (await apiFetch("/api/suites")).json().catch(() => state.suitesSaved);
+      state.form.savedSuiteId = data.suite.id;
+      renderConfigForm();
+      toast(`已保存套件「${name}」（可在资源页管理）`);
+    } catch (err) { toast(err.message || "保存失败", true); }
+  });
   // 执行组
   const inRepeat = $("#rc-in-repeat");
   inRepeat.addEventListener("input", () => { state.form.repeat = inRepeat.value; updatePreview(); });
@@ -779,7 +846,8 @@ function renderConfigForm() {
     <button type="button" data-v="upload" class="${f.source === "upload" ? "on" : ""}">我的测试</button>`;
   $("#rc-seg-target").innerHTML = `
     <button type="button" data-v="suite" class="${f.targetMode === "suite" ? "on" : ""}">按 Suite</button>
-    <button type="button" data-v="test" class="${f.targetMode === "test" ? "on" : ""}">按 Test</button>`;
+    <button type="button" data-v="test" class="${f.targetMode === "test" ? "on" : ""}">按 Test</button>
+    <button type="button" data-v="cases" class="${f.targetMode === "cases" ? "on" : ""}">勾选 Case</button>`;
   $("#rc-sel-git").innerHTML = optionList(
     (state.config.branches || []).map((b) => ({ value: b.name, label: b.name + (b.current ? "（当前）" : "") })),
     f.gitRef);
@@ -794,6 +862,9 @@ function renderConfigForm() {
   $("#rc-sel-test").innerHTML = optionList(
     (state.config.tests || []).map((t) => ({ value: t, label: t })),
     f.test);
+  $("#rc-sel-savedsuite").innerHTML = `<option value="">（手动勾选）</option>` + optionList(
+    state.suitesSaved.map((s) => ({ value: s.id, label: `[套件] ${s.name}（${s.cases.length} cases）` })),
+    f.savedSuiteId);
   applySourceMode();
   updatePreview();
 }
@@ -812,17 +883,19 @@ export async function render(el) {
   const seq = ++renderSeq; // 防止切视图后迟到的 fetch 继续覆盖 DOM
   ensureCss();
 
-  const [config, envs, uploads, loops] = await Promise.all([
+  const [config, envs, uploads, loops, suitesSaved] = await Promise.all([
     fetchJson("/api/config", {}),
     fetchJson("/api/envs", []),
     fetchJson("/api/uploads", []),
     fetchJson("/api/loops", []),
+    fetchJson("/api/suites", []),
   ]);
   if (seq !== renderSeq) return;
   state.config = { products: [], branches: [], suites: [], tests: [], ...config };
   state.envs = Array.isArray(envs) ? envs : [];
   state.uploads = Array.isArray(uploads) ? uploads : [];
   state.loops = Array.isArray(loops) ? loops : [];
+  state.suitesSaved = Array.isArray(suitesSaved) ? suitesSaved : [];
 
   // 默认表单值
   const f = state.form;
@@ -873,6 +946,15 @@ export async function render(el) {
               <div class="field" id="rc-field-target"><label>运行目标</label><div class="rc-seg" id="rc-seg-target"></div></div>
               <div class="field" id="rc-field-suite"><label>Suite</label><select class="select" id="rc-sel-suite"></select></div>
               <div class="field" id="rc-field-test" hidden><label>Test</label><select class="select" id="rc-sel-test"></select></div>
+              <div class="field" id="rc-field-cases" hidden>
+                <label>勾选 Case <span class="faint" style="font-weight:400">（分支：<span id="rc-cases-ref">HEAD</span>，运行时生成临时套件并在结束后删除）</span></label>
+                <select class="select" id="rc-sel-savedsuite"></select>
+                <div id="rc-cases-picker"></div>
+                <div class="rc-save-suite-row">
+                  <input class="input" id="rc-in-suitename" type="text" placeholder="套件名称（另存当前勾选）" autocomplete="off"/>
+                  <button class="btn btn-ghost btn-sm" id="rc-btn-savesuite" type="button">另存为套件</button>
+                </div>
+              </div>
             </div>
             <div class="rc-group">
               <div class="rc-group-label">执行</div>

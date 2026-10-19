@@ -106,6 +106,33 @@ def config(git_ref: str = "", user: dict = Depends(get_current_user)) -> dict:
     }
 
 
+@router.get("/cases")
+def cases(ref: str = "", product: str = "", user: dict = Depends(get_current_user)) -> dict:
+    """按分支列出 case（勾选 Case 模式的数据源，T17）。
+
+    返回按 feature（scripts/<product> 下的子目录）分组的 case 列表，
+    供前端勾选器展示（搜索 / 全选 / 清除在前端做）。
+    """
+    manager = get_job_manager()
+    workdir: Path = manager.workdir
+    r = (ref or "").strip() or "HEAD"
+    prefix = f"scripts/{product.strip()}" if (product or "").strip() else "scripts"
+    files = [
+        p for p in git_worktree.list_tree_files(workdir, r, prefix)
+        if p.endswith(".py") and not Path(p).name.startswith("_")
+    ]
+    groups: dict[str, list[str]] = {}
+    for p in files:
+        parts = p.split("/")
+        feature = "/".join(parts[:-1]) if len(parts) > 2 else "(root)"
+        groups.setdefault(feature, []).append(p)
+    return {
+        "ref": r,
+        "total": len(files),
+        "groups": [{"feature": k, "cases": v} for k, v in sorted(groups.items())],
+    }
+
+
 def _count_suite_cases(workdir: Path, relpath: str, ref: str) -> int:
     """suite 文件的 case 行数（非空非注释）；仅本地可读（HEAD）时统计。"""
     if ref not in ("", "HEAD", "(workdir)"):

@@ -304,3 +304,35 @@ export const mockStats = {
 
 /* mock 登录会话 token */
 export const MOCK_SESSION = "mock-session-token";
+
+/* ── T16/T17：定时任务 / 保存的套件 / 按分支 case（mock 演示）── */
+export const mockCaseGroups = [
+  { feature: "scripts/firebox/network", cases: [
+    "scripts/firebox/network/firebox_network_dhcp_secondary.py",
+    "scripts/firebox/network/firebox_network_lan_basic.py",
+    "scripts/firebox/network/firebox_network_wan_pppoe.py",
+  ] },
+  { feature: "scripts/firebox/smoke", cases: [
+    "scripts/firebox/smoke/firebox_smoke_login.py",
+  ] },
+  { feature: "scripts/firebox/dashboard", cases: [
+    "scripts/firebox/dashboard/firebox_dashboard_front_panel.py",
+  ] },
+];
+
+export const mockSuites = [
+  { id: "suitemock01", owner_id: 1, owner_name: "wyj", name: "报关冒烟集", product: "firebox",
+    cases: ["scripts/firebox/smoke/firebox_smoke_login.py", "scripts/firebox/network/firebox_network_lan_basic.py"],
+    created_at: "2026-10-15 09:00:00", updated_at: "2026-10-16 14:20:00" },
+];
+
+export const mockSchedules = [
+  { id: "schedmock01", owner_id: 1, owner_name: "wyj", name: "每晚报关回归",
+    env_id: "envmock01", env_name: "lab-fbox-12",
+    params: { env_id: "envmock01", product: "firebox", source: "repo", git_ref: "main",
+      suite: "", cases: ["scripts/firebox/smoke/firebox_smoke_login.py"], repeat: 1, headless: false },
+    rule_type: "daily", time: "22:30", run_at: null,
+    enabled: true, next_run_at: "2026-10-17 22:30:00",
+    last_loop_id: "20261016223000-a1b2c3", last_status: "started",
+    last_note: "已发起 loop 20261016223000-a1b2c3", created_at: "2026-10-15 09:00:00" },
+];

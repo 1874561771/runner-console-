@@ -341,3 +341,32 @@
 }
 .rc-toast.on { transform: translate(-50%, 0); }
 .rc-toast.err { background: var(--fail); }
+
+/* ── 勾选 Case（casepicker.js，运行台 / 定时任务弹层共用）── */
+#rc-field-cases .select { margin-bottom: 8px; }
+.rc-save-suite-row { display: flex; gap: 8px; margin-top: 8px; }
+.rc-save-suite-row .input { flex: 1; min-width: 0; }
+.cp-box { border: 1px solid var(--line-soft); border-radius: var(--radius-btn); background: var(--surface, #fff); }
+.cp-toolbar { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--line-soft); }
+.cp-search { flex: 1; min-width: 0; height: 30px; padding: 4px 10px; font-size: 12.5px; }
+.cp-count { font-size: 11.5px; flex: none; }
+.cp-body { max-height: 300px; overflow-y: auto; padding: 6px 10px 10px; }
+.cp-loading { padding: 18px 0; text-align: center; color: var(--ink-3); font-size: 12.5px; }
+.cp-group { margin-top: 8px; }
+.cp-group-head {
+  display: flex; align-items: center; gap: 7px; padding: 4px 2px;
+  font-size: 12px; font-weight: 600; color: var(--ink-2); cursor: pointer;
+}
+.cp-feat { font-family: var(--font-mono); }
+.cp-case {
+  display: flex; align-items: center; gap: 7px; padding: 3px 2px 3px 22px;
+  font-size: 12.5px; cursor: pointer; border-radius: 4px;
+}
+.cp-case:hover { background: rgba(0, 0, 0, .04); }
+.cp-path { color: var(--ink); }
+.cp-dir { font-size: 11px; margin-left: auto; padding-left: 10px; }
+.cp-hit .cp-path { color: var(--accent); }
+
+/* ── 定时任务页 ── */
+.sch-rule-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sch-rule-row .rc-sw-text { font-size: 12.5px; }

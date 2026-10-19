@@ -63,6 +63,7 @@ class RunIn(BaseModel):
     build: str | None = None        # 固件 build（runner --build）
     repeat: int = 1
     pause_on_fail: bool = False
+    cases: list[str] | None = None  # 勾选 Case 模式：scripts/ 下 case 路径集合（生成临时 suite）
 
 
 class EnvIn(BaseModel):

@@ -189,6 +189,49 @@ const mockRoutes = {
     return { items: mock.mockAudit.slice(offset, offset + limit), total: mock.mockAudit.length };
   },
   "GET /api/admin/users": () => mock.mockUsers,
+  /* ── 定时任务 / 保存的套件 / 按分支列 case（T16/T17，mock 演示）── */
+  "GET /api/cases": (_body, _p, query) => {
+    const q = query instanceof URLSearchParams ? query : new URLSearchParams();
+    const ref = q.get("ref") || "HEAD";
+    return { ref, total: mock.mockCaseGroups.reduce((n, g) => n + g.cases.length, 0), groups: mock.mockCaseGroups };
+  },
+  "GET /api/suites": () => mock.mockSuites,
+  "POST /api/suites": (body) => {
+    const s = { id: "mock" + Math.random().toString(16).slice(2, 8), owner_id: 1, owner_name: "mock", product: "firebox", created_at: "2026-01-01 00:00:00", updated_at: "2026-01-01 00:00:00", ...body };
+    mock.mockSuites.unshift(s);
+    return { suite: s };
+  },
+  "PUT /api/suites/:id": (body, p) => {
+    const s = mock.mockSuites.find((x) => x.id === p.id);
+    if (!s) return { error: "suite not found" };
+    Object.assign(s, body, { updated_at: "2026-01-01 00:00:00" });
+    return { suite: s };
+  },
+  "DELETE /api/suites/:id": (_body, p) => {
+    mock.mockSuites = mock.mockSuites.filter((x) => x.id !== p.id);
+    return { ok: true };
+  },
+  "GET /api/schedules": () => mock.mockSchedules,
+  "POST /api/schedules": (body) => {
+    const s = { id: "mock" + Math.random().toString(16).slice(2, 8), owner_id: 1, owner_name: "mock", env_name: "mock-env", last_loop_id: null, last_status: null, last_note: null, created_at: "2026-01-01 00:00:00", next_run_at: body.rule_type === "daily" ? "2026-01-02 " + (body.time || "08:00") + ":00" : body.run_at + ":00", ...body };
+    mock.mockSchedules.unshift(s);
+    return { schedule: s };
+  },
+  "PATCH /api/schedules/:id": (body, p) => {
+    const s = mock.mockSchedules.find((x) => x.id === p.id);
+    if (!s) return { error: "schedule not found" };
+    Object.assign(s, body);
+    return { schedule: s };
+  },
+  "DELETE /api/schedules/:id": (_body, p) => {
+    mock.mockSchedules = mock.mockSchedules.filter((x) => x.id !== p.id);
+    return { ok: true };
+  },
+  "POST /api/schedules/:id/run-now": (_body, p) => {
+    const s = mock.mockSchedules.find((x) => x.id === p.id);
+    if (s) { s.last_status = "started"; s.last_loop_id = "20260101000000-mock00"; }
+    return { loop_id: "20260101000000-mock00" };
+  },
   /* ── 在线编辑 / 新建上传文件（资源页编辑器，mock 演示）──────── */
   "GET /api/uploads/:id/content": (_body, p) => {
     const u = mock.mockUploads.find((x) => x.id === p.id);
