@@ -128,7 +128,8 @@ def create_app() -> FastAPI:
             text = str(detail)
         return JSONResponse(status_code=exc.status_code, content={"detail": detail, "error": text})
 
-    # 请求访问日志
+    # 请求访问日志 + 前端静态文件禁缓存（内网工具迭代频繁，
+    # 浏览器缓存旧 JS 会让用户看不到新功能——路由回落/旧视图）
     @app.middleware("http")
     async def access_log(request: Request, call_next):
         start = time.perf_counter()
@@ -140,6 +141,8 @@ def create_app() -> FastAPI:
             response.status_code,
             (time.perf_counter() - start) * 1000,
         )
+        if not request.url.path.startswith("/api"):
+            response.headers["Cache-Control"] = "no-cache"
         return response
 
     @app.get("/favicon.ico", include_in_schema=False)

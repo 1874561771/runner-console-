@@ -55,8 +55,10 @@
 @media (max-width: 1080px) { .rc-layout { grid-template-columns: 1fr; } }
 
 /* RUN / STOP 主按钮（配置卡底部整行） */
-.rc-run-row { margin-top: 12px; }
+.rc-run-row { margin-top: 12px; display: flex; gap: 8px; }
 .rc-run-row .btn { height: 36px; font-family: var(--font-mono); font-weight: 600; letter-spacing: 1.5px; text-indent: 1.5px; }
+.rc-run-row .btn-block { flex: 1; min-width: 0; }
+.rc-run-row #rc-btn-sched { flex: none; padding: 0 14px; }
 .rc-btn-run { font-family: var(--font-mono); font-weight: 600; letter-spacing: 1.5px; text-indent: 1.5px; min-width: 96px; height: 36px; }
 
 /* 最近任务列表 */

@@ -6,6 +6,7 @@
    ═══════════════════════════════════════════════════════════════ */
 import { apiFetch, openConsoleStream } from "../api.js";
 import { mountCasePicker } from "../casepicker.js";
+import { openModal } from "../ui.js";
 
 /* ── 视图生命周期：router 直接 innerHTML 替换，本模块自行清理 ── */
 let disposers = [];
@@ -228,11 +229,60 @@ async function onRun() {
   }
 }
 
+/* 把当前表单配置保存为定时任务（T16：运行台直提交） */
+function openScheduleFromForm() {
+  const f = state.form;
+  if (!state.envId) { toast("请先选择环境", true); return; }
+  if (f.source === "repo" && f.targetMode === "suite" && !f.suite) { toast("请选择 Suite", true); return; }
+  if (f.source === "repo" && f.targetMode === "test" && !f.test) { toast("请选择 Test", true); return; }
+  if (f.source === "repo" && f.targetMode === "cases" && !f.cases.length) { toast("请勾选至少一个 Case", true); return; }
+  if (f.source === "upload" && !f.uploadId) { toast("请选择我的测试", true); return; }
+
+  const m = openModal({
+    title: "保存为定时任务",
+    width: 480,
+    body: `
+      <div class="field"><label>名称</label>
+        <input class="input" id="schq-name" type="text" placeholder="如：每晚报关回归" autocomplete="off"/></div>
+      <div class="field"><label>触发规则（服务器本机时间）</label>
+        <div class="sch-rule-row">
+          <label class="rc-switch"><input type="radio" name="schq-rule" value="daily" checked/><span class="rc-track"></span><span class="rc-sw-text">每天</span></label>
+          <input class="input" id="schq-time" type="time" value="08:30" style="width:110px"/>
+          <label class="rc-switch"><input type="radio" name="schq-rule" value="once"/><span class="rc-track"></span><span class="rc-sw-text">单次</span></label>
+          <input class="input" id="schq-runat" type="datetime-local" style="width:190px"/>
+        </div></div>
+      <p class="faint" style="font-size:12px;margin:0">快照 = 当前运行台表单（环境 / 分支 / 目标 / 次数 / 固件）。
+        分支类目标每次运行取该分支当时最新；到点设备忙时自动排队。任务在「定时任务」页管理。</p>`,
+    footer: `<button type="button" class="btn btn-ghost" data-act="cancel">取消</button>
+             <button type="button" class="btn btn-primary" data-act="save">创建定时任务</button>`,
+  });
+  m.root.querySelector('[data-act="cancel"]').addEventListener("click", m.close);
+  m.root.querySelector('[data-act="save"]').addEventListener("click", async () => {
+    const name = m.root.querySelector("#schq-name").value.trim();
+    if (!name) { toast("请输入名称", true); return; }
+    const ruleType = m.root.querySelector('input[name=schq-rule]:checked').value;
+    const time = m.root.querySelector("#schq-time").value;
+    const runAt = m.root.querySelector("#schq-runat").value.replace("T", " ");
+    if (ruleType === "daily" && !time) { toast("请选择每天运行的时间", true); return; }
+    if (ruleType === "once" && !runAt) { toast("请选择单次运行时间", true); return; }
+    try {
+      const res = await apiFetch("/api/schedules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, rule_type: ruleType, time, run_at: runAt, enabled: true, run: runParams() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) { toast(data.error || "创建失败", true); return; }
+      m.close();
+      toast(`定时任务「${name}」已创建（下次运行 ${data.schedule?.next_run_at || "—"}）`);
+    } catch (err) { toast(err.message || "创建失败", true); }
+  });
+}
+
 async function onStop() {
   if (!state.loop) return;
   const id = state.loop.id;
-  try {
-    const res = await apiFetch(`/api/loops/${encodeURIComponent(id)}/stop`, { method: "POST" });
+  try {    const res = await apiFetch(`/api/loops/${encodeURIComponent(id)}/stop`, { method: "POST" });
     const data = await res.json().catch(() => ({}));
     toast(data.message || `已请求停止 ${id}`, !res.ok || !!data.error);
   } catch (err) {
@@ -834,6 +884,8 @@ function wireConfigForm() {
     if (state.loop && state.loop.status === "running") onStop();
     else onRun();
   });
+  // 定时：当前配置保存为定时任务
+  $("#rc-btn-sched").addEventListener("click", openScheduleFromForm);
 }
 
 function renderConfigForm() {
@@ -979,6 +1031,7 @@ export async function render(el) {
             <div class="rc-cmd" id="rc-cmd"></div>
             <div class="rc-run-row">
               <button class="btn btn-primary btn-block" id="rc-btn-run" type="button">RUN</button>
+              <button class="btn btn-ghost" id="rc-btn-sched" type="button" title="把当前运行配置保存为定时任务">定时</button>
             </div>
           </div>
         </section>
