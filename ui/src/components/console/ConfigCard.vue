@@ -281,7 +281,7 @@ async function saveSuite() {
 .fld-label { font-size: 12px; color: var(--ink-2); margin-bottom: 4px; }
 .fld.row { display: flex; align-items: center; gap: 8px; min-height: 26px; }
 .fld.row .tgl { flex: 1; }
-.fld.toggles { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+.fld.toggles { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 .fld.toggles :deep(.n-button__content) {
   font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
