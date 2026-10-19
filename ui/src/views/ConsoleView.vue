@@ -1,23 +1,26 @@
 <script setup>
-/* 运行台（P1a）：左 = 配置卡 + 最近任务；右 = 绑定 loop 摘要（1b 迁移完整详情） */
-import { onMounted, ref, computed } from "vue";
-import { NCard, NButton, NTag, NEmpty, NPopconfirm, useMessage } from "naive-ui";
+/* 运行台（P1a/P1b）：左 = 配置卡 + 最近任务；右 = 详情面板（概览/控制台） */
+import { onMounted, onUnmounted, ref, computed } from "vue";
+import { NCard, NButton, NTag, NEmpty, useMessage } from "naive-ui";
 import { useConsoleStore } from "../stores/consoleStore.js";
 import { apiFetch } from "../api/client.js";
 import ConfigCard from "../components/console/ConfigCard.vue";
+import DetailPanel from "../components/console/DetailPanel.vue";
 
 const store = useConsoleStore();
 const message = useMessage();
 const busy = ref(false);
+let pollTimer = null;
 
 onMounted(async () => {
   await store.loadAll();
   if (!store.loop) {
-    const running = store.loops.find((l) => l.status === "running")
-      || store.loops[0];
+    const running = store.loops.find((l) => l.status === "running") || store.loops[0];
     if (running) await store.bindLoop(running.id).catch(() => {});
   }
+  pollTimer = setInterval(pollLoop, 5000);
 });
+onUnmounted(() => { if (pollTimer) clearInterval(pollTimer); });
 
 const bound = computed(() => store.loop?.loop || null);
 const recent = computed(() => store.loops.slice(0, 8));
@@ -28,6 +31,19 @@ const STATUS_TAG = {
   failed: { type: "error", text: "FAILED" },
   done: { type: "success", text: "DONE" },
 };
+
+/* 5s 轮询绑定 loop 状态；状态变化时刷新最近任务列表 */
+async function pollLoop() {
+  if (!store.loop) return;
+  const id = store.loop.loop.id;
+  try {
+    const d = await asJson(await apiFetch(`/api/loops/${encodeURIComponent(id)}/status`));
+    if (!d?.loop) return;
+    const prev = store.loop?.loop?.status;
+    store.loop = d;
+    if (d.loop.status !== prev) store.refreshLoops();
+  } catch { /* 瞬时错误忽略 */ }
+}
 
 async function onRun() {
   busy.value = true;
@@ -77,38 +93,11 @@ async function pickLoop(id) {
     </div>
 
     <div class="rc-right">
-      <n-card v-if="bound" size="small">
-        <template #header>
-          <span class="mono">{{ bound.id }}</span>
-        </template>
-        <template #header-extra>
-          <n-tag :type="(STATUS_TAG[bound.status] || {}).type || 'default'" :bordered="false">
-            {{ (STATUS_TAG[bound.status] || {}).text || bound.status }}
-          </n-tag>
-        </template>
-        <div class="meta-grid">
-          <div><div class="k">环境</div><div class="v">{{ bound.env_name || bound.env_id || "—" }}</div></div>
-          <div><div class="k">Product</div><div class="v">{{ bound.product || "—" }}</div></div>
-          <div><div class="k">分支 / ref</div><div class="v mono">{{ bound.git_ref || "HEAD" }}</div></div>
-          <div><div class="k">轮次</div><div class="v">{{ bound.iterations ?? 0 }} / {{ bound.repeat_total || "∞" }}</div></div>
-        </div>
-        <div v-if="bound.stop_reason" class="stop-note">停止原因：{{ bound.stop_reason }}</div>
-        <div v-if="bound.status === 'running'" style="margin-top: 10px">
-          <n-popconfirm @positive-click="onStop">
-            <template #trigger>
-              <n-button size="small" type="error" secondary>停止该循环</n-button>
-            </template>
-            确定停止当前循环？
-          </n-popconfirm>
-        </div>
-        <p class="faint" style="font-size: 12px; margin: 12px 0 0">
-          概览详情 / case 结果 / 材料区 / SSE 控制台将在 P1 下一阶段（1b/1c）迁移。
-        </p>
-      </n-card>
+      <DetailPanel v-if="bound" />
       <n-card v-else size="small">
         <n-empty description="暂无进行中的循环任务——左侧配置后点击 RUN 启动">
           <template #extra>
-            <n-button size="small" quaternary @click="pickLoop(store.loops[0]?.id)" :disabled="!store.loops.length">
+            <n-button size="small" quaternary :disabled="!store.loops.length" @click="pickLoop(store.loops[0]?.id)">
               查看最近一次运行
             </n-button>
           </template>
@@ -130,11 +119,4 @@ async function pickLoop(id) {
 .recent-item:hover { background: var(--surface-sub); }
 .recent-item.on { background: var(--accent-soft); }
 .rid { font-size: 12px; }
-.meta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-.meta-grid .k { font-size: 11.5px; color: var(--ink-3); }
-.meta-grid .v { font-size: 13px; font-weight: 600; word-break: break-all; }
-.stop-note {
-  margin-top: 10px; padding: 8px 10px; border-radius: 6px;
-  background: #fdf6ec; color: #b8860b; font-size: 12.5px;
-}
 </style>
