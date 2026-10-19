@@ -227,10 +227,12 @@ async function saveSuite() {
       {{ store.commandPreview.pure }} <span class="faint"># {{ store.commandPreview.note }}</span>
     </div>
 
-    <div class="run-row">
+    <div class="rc-btn-row">
+      <n-button block @click="openSchedule">定时</n-button>
+    </div>
+    <div class="rc-btn-row">
       <n-button v-if="!running" type="primary" block @click="onRun">RUN</n-button>
       <n-button v-else type="error" block @click="onStop">STOP</n-button>
-      <n-button quaternary @click="openSchedule">定时</n-button>
     </div>
 
     <n-modal v-model:show="schedShow" preset="card" title="保存为定时任务" style="width: 480px">
@@ -279,15 +281,18 @@ async function saveSuite() {
 .fld-label { font-size: 12px; color: var(--ink-2); margin-bottom: 4px; }
 .fld.row { display: flex; align-items: center; gap: 8px; min-height: 26px; }
 .fld.row .tgl { flex: 1; }
-.fld.toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.fld.toggles { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+.fld.toggles :deep(.n-button__content) {
+  font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .repeat-box { display: flex; align-items: center; gap: 4px; flex: none; }
 .x { color: var(--ink-3); }
 .cmd {
   background: var(--surface-sub); border: 1px solid var(--line-soft); border-radius: 6px;
   padding: 9px 11px; font-size: 10.5px; line-height: 1.6; word-break: break-all; user-select: all;
 }
-.run-row { display: flex; gap: 8px; margin-top: 12px; }
-.run-row .n-button:first-child { flex: 1; }
+.rc-btn-row { display: flex; gap: 8px; margin-top: 10px; }
+.rc-btn-row .n-button { flex: 1; height: 36px; font-family: var(--font-mono); font-weight: 600; letter-spacing: 1.5px; text-indent: 1.5px; }
 .save-suite-row { display: flex; gap: 8px; margin-top: 8px; }
 .save-suite-row .n-input { flex: 1; }
 .rule-row { display: flex; align-items: center; gap: 10px; }
