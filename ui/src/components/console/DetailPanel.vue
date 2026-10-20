@@ -57,7 +57,7 @@ const target = computed(() => {
           <a
             v-if="latestRun"
             class="mono faint" style="font-size: 12px"
-            :href="`/api/runs/${encodeURIComponent(latestRun.run_id)}/summary.html`"
+            :href="`/runs/${encodeURIComponent(latestRun.run_id)}/summary.html`"
             target="_blank" rel="noopener"
           >summary.html</a>
         </template>

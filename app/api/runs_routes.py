@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 
 from app.api.common import artifacts_root, fmt_dt, parse_int
 from app.api.deps import get_current_user
@@ -189,16 +189,12 @@ def _tail_lines(path, n: int) -> list[str]:
 
 
 @router.get("/runs/{run_id}/summary.html")
-def run_summary_html(run_id: str, user: dict = Depends(get_current_user)) -> FileResponse:
+def run_summary_html(run_id: str, user: dict = Depends(get_current_user)):
+    """302 → /runs/{run_id}/summary.html（files_routes 提供）。
+
+    summary.html 内的截图/case.log 引用是相对路径，浏览器按文档 URL 解析；
+    若从 /api/runs/... 直出，相对路径会落到 /api/runs/<id>/firebox/... 404。
+    跳到 /runs/<id>/ 前缀下，相对引用正好命中 files_routes 的产物路由。
+    """
     get_run_or_404(run_id, user)
-    base = artifacts_root() / run_id
-    target = base / "summary.html"
-    arts = runs_dao.list_artifacts(run_id, kind="summary_html")
-    if arts:
-        cand = (artifacts_root() / str(arts[0]["relpath"])).resolve()
-        # 路径穿越防护：ingest 写入的 relpath 也必须落在 run 目录内
-        if cand.is_file() and base.resolve() in cand.parents:
-            target = cand
-    if not target.is_file():
-        raise HTTPException(status_code=404, detail="summary.html 不存在（未生成或已清理）")
-    return FileResponse(target, media_type="text/html")
+    return RedirectResponse(f"/runs/{run_id}/summary.html", status_code=302)
