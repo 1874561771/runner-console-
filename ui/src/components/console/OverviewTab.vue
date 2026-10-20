@@ -115,7 +115,10 @@ onUnmounted(stopLive);
       <span class="sec-label">材料</span>
       <span v-if="activeRunId" class="faint mono" style="font-size: 11.5px">Run {{ activeRunId }}</span>
     </div>
-    <MaterialsList v-if="activeRunId" :run-id="activeRunId" :files="materialsFiles" />
+    <MaterialsList
+      v-if="activeRunId" :run-id="activeRunId"
+      :files="materialsFiles" :cases="displayCases"
+    />
   </div>
 </template>
 
