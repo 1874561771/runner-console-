@@ -63,3 +63,15 @@ a { color: var(--accent-hover); text-decoration: none; }
 .view-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
 .view-head .view-title { margin: 0; }
 .view-head .spacer { flex: 1; }
+
+/* ── 通用表格（对齐旧版 design-tokens 的 .table）── */
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td {
+  padding: 9px 12px; text-align: left; vertical-align: top;
+  border-bottom: 1px solid var(--line-soft); font-size: 13px;
+}
+.table thead th {
+  background: var(--surface-sub); font-weight: 600;
+  color: var(--ink-2); font-size: 12.5px; white-space: nowrap;
+}
+.table tbody tr:hover { background: var(--surface-sub); }
