@@ -11,8 +11,9 @@
 5. pause_on_fail 语义保留：fail/setup_fail 停止循环，终态由原 'paused'
    收敛为 'failed'（新 schema loops.status 枚举无 paused）。
 6. 每轮结束后 env_lock.update 写入 run_id、_cleanup 时 release 保留。
-7. 停止改为协作式：request_stop() 只置位 stop 标记，当前 iteration 结束后
-   停止；不再 terminate 正在运行的子进程（原版 stop 会 terminate）。
+7. 停止语义对齐原版 webui：request_stop() 置位标记并 terminate 正在运行
+   的 iteration 子进程（STOP 立即生效）；准备阶段到达的 STOP 会跳过本次
+   iteration。
 8. artifacts 清理（原 manager.prune_artifacts）移除——T6 retention 负责。
 """
 
@@ -155,13 +156,21 @@ class LoopRunner:
             }
 
     def request_stop(self) -> bool:
-        """协作式停止：置位标记，当前 iteration 结束后停止。
+        """停止循环：置位标记并终止正在运行的 iteration 子进程。
 
-        返回 True 表示停止时子进程仍在运行（本轮会跑完）。
+        对齐原版 webui 行为——STOP 立即生效（不等当前 case 自然跑完）。
+        返回 True 表示停止时有子进程在运行（已被 terminate）。
         """
         with self.lock:
             self.loop_stop.set()
-            running = self.proc is not None and self.proc.poll() is None
+            proc = self.proc
+            running = proc is not None and proc.poll() is None
+        if running:
+            self._append_console("\n[loop] 收到 STOP：终止当前 iteration 子进程\n")
+            try:
+                proc.terminate()
+            except OSError:
+                pass
         return running
 
     def start(self) -> None:
@@ -296,6 +305,10 @@ class LoopRunner:
             cmd[0] = self.runner_py
             child_env = dict(os.environ)
             child_env["PYTHONIOENCODING"] = "utf-8"
+            if self.loop_stop.is_set():
+                # STOP 在准备阶段就到达：不再启动子进程，跳过本次 iteration
+                self._append_console("\n[loop] 收到 STOP——跳过本次 iteration\n")
+                return
             self.proc = subprocess.Popen(
                 cmd,
                 cwd=str(cwd),

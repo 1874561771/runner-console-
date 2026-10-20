@@ -281,7 +281,7 @@ class JobManager:
             },
         )
         if was_running:
-            return True, "已请求停止：当前 iteration 结束后停止"
+            return True, "已停止：正在运行的 iteration 已被终止"
         return True, "loop 已取消（尚无运行中的迭代）"
 
     # ----------------------------------------------------------- console

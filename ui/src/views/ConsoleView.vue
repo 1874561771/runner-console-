@@ -3,7 +3,7 @@
 import { onMounted, onUnmounted, ref, computed } from "vue";
 import { NCard, NButton, NTag, NEmpty, useMessage } from "naive-ui";
 import { useConsoleStore } from "../stores/consoleStore.js";
-import { apiFetch } from "../api/client.js";
+import { apiFetch, asJson } from "../api/client.js";
 import ConfigCard from "../components/console/ConfigCard.vue";
 import DetailPanel from "../components/console/DetailPanel.vue";
 
