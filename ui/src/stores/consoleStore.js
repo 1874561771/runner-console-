@@ -1,5 +1,8 @@
 import { defineStore } from "pinia";
 import { apiFetch, asJson } from "../api/client.js";
+import { consoleStream } from "../composables/useConsoleStream.js";
+
+export { consoleStream };
 
 export const useConsoleStore = defineStore("console", {
   state: () => ({
@@ -138,7 +141,13 @@ export const useConsoleStore = defineStore("console", {
     async bindLoop(id) {
       const d = await asJson(await apiFetch(`/api/loops/${encodeURIComponent(id)}/status`));
       this.loop = d?.loop ? d : { loop: d };
+      if (consoleStream.loopId.value !== id) consoleStream.open(id);
       return this.loop;
+    },
+
+    unbindLoop() {
+      this.loop = null;
+      consoleStream.close();
     },
   },
 });

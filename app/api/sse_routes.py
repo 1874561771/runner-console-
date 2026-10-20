@@ -144,7 +144,14 @@ def _console_events_inner(loop_id: str, last_event_id: int | None) -> Iterator[s
             cursor = new_off
             yield _sse("append", _normalize(text), event_id=str(cursor))
 
-        last_status_check = 0.0
+        # 进等待循环前先查一次终态：历史 loop（已 done/stopped）连接后
+        # 应立即收到 end，而不是等第一个心跳超时（15s）
+        status = _final_status(loop_id)
+        if status is not None:
+            yield _sse("end", json.dumps({"status": status}))
+            return
+
+        last_status_check = time.monotonic()
         while True:
             try:
                 item: Any = sub.get(timeout=HEARTBEAT_INTERVAL_S)

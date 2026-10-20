@@ -5,6 +5,7 @@ import { NCard, NTag, NTabs, NTabPane } from "naive-ui";
 import { useConsoleStore } from "../../stores/consoleStore.js";
 import { fmtDuration } from "../../utils/format.js";
 import OverviewTab from "./OverviewTab.vue";
+import ConsoleStream from "./ConsoleStream.vue";
 
 const store = useConsoleStore();
 const bound = computed(() => store.loop?.loop || null);
@@ -48,10 +49,8 @@ const target = computed(() => {
         <n-tab-pane name="overview" tab="概览">
           <OverviewTab :loop="bound" />
         </n-tab-pane>
-        <n-tab-pane name="console" tab="控制台">
-          <div class="faint" style="padding: 20px 0; text-align: center; font-size: 12.5px">
-            SSE 控制台流将在 P1c 迁移。
-          </div>
+        <n-tab-pane name="console" tab="控制台" display-directive="show">
+          <ConsoleStream />
         </n-tab-pane>
         <template #suffix>
           <a

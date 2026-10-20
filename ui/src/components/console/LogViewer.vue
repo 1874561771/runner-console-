@@ -3,6 +3,7 @@
 import { ref, computed, onMounted } from "vue";
 import { NSpin } from "naive-ui";
 import { apiFetch } from "../../api/client.js";
+import { lineClass } from "../../utils/logHighlight.js";
 
 const props = defineProps({
   runId: { type: String, required: true },
@@ -30,18 +31,6 @@ onMounted(async () => {
 
 const lines = computed(() => text.value.split("\n"));
 
-/* 行分类（对齐 runner 的日志格式：ui_automation.step 的 START/PASS/FAIL、
-   截图行、Job setup 的 === StepN、错误栈） */
-function lineClass(line) {
-  if (/ui_automation\.step:.*\bPASS\b|\bPASS\s+\S+\s*\|/.test(line)) return "ln-pass";
-  if (/ui_automation\.step:.*\bFAIL\b|\bFAIL\s+\S+\s*\|/.test(line)) return "ln-fail";
-  if (/ui_automation\.step:.*\bSTART\b|\bSTART\s+\S+\s*\|/.test(line)) return "ln-step";
-  if (/Saved (pass|fail) screenshot/i.test(line)) return "ln-shot";
-  if (/===\s*Step\d+/i.test(line)) return "ln-head";
-  if (/\[ERROR\]|Traceback|Exception:/.test(line)) return "ln-err";
-  if (/^=====\s.+CASE|^RESULT\b|^CASE\b/.test(line)) return "ln-head";
-  return "";
-}
 </script>
 
 <template>
