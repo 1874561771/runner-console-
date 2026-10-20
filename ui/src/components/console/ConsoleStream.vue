@@ -1,8 +1,14 @@
 <script setup>
-/* 控制台页签：SSE 实时流（连接由 useConsoleStream 管理，切页签不断流） */
-import { ref, watch, nextTick } from "vue";
-import { consoleStream as stream } from "../../composables/useConsoleStream.js";
+/* 控制台页签：SSE 实时流。
+ * 不传 stream 时用应用级单例（运行台）；Inspector 等场景传独立实例 */
+import { ref, watch, nextTick, computed } from "vue";
+import { consoleStream as defaultStream } from "../../composables/useConsoleStream.js";
 import { lineClass } from "../../utils/logHighlight.js";
+
+const props = defineProps({
+  stream: { type: Object, default: null },
+});
+const stream = computed(() => props.stream || defaultStream);
 
 const bodyEl = ref(null);
 const stick = ref(true);   // 贴底跟随（用户上滚即暂停）
@@ -16,7 +22,7 @@ function scrollToBottom() {
   const el = bodyEl.value;
   if (el && stick.value) el.scrollTop = el.scrollHeight;
 }
-watch(() => stream.text.value, async () => {
+watch(() => stream.value.text.value, async () => {
   await nextTick();
   scrollToBottom();
 });
