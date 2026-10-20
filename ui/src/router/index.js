@@ -11,7 +11,7 @@ const routes = [
       { path: "console", name: "console", component: () => import("../views/ConsoleView.vue"), meta: { title: "运行台" } },
       { path: "schedules", name: "schedules", component: () => import("../views/SchedulesView.vue"), meta: { title: "定时任务" } },
       { path: "tasks", name: "tasks", component: () => import("../views/TasksView.vue"), meta: { title: "任务中心" } },
-      { path: "dashboard", name: "dashboard", component: () => import("../views/PlaceholderView.vue"), meta: { title: "数据看板" } },
+      { path: "dashboard", name: "dashboard", component: () => import("../views/DashboardView.vue"), meta: { title: "数据看板" } },
       { path: "resources", name: "resources", component: () => import("../views/ResourcesView.vue"), meta: { title: "资源" } },
       { path: "admin", name: "admin", component: () => import("../views/PlaceholderView.vue"), meta: { title: "管理" } },
     ],
