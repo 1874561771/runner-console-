@@ -14,9 +14,11 @@ let pollTimer = null;
 
 onMounted(async () => {
   await store.loadAll();
+  // 深链：/console?loop=<id>（定时任务页/任务中心跳转）
+  const urlLoop = new URLSearchParams(location.hash.split("?")[1] || "").get("loop");
   if (!store.loop) {
-    const running = store.loops.find((l) => l.status === "running") || store.loops[0];
-    if (running) await store.bindLoop(running.id).catch(() => {});
+    const target = (urlLoop && { id: urlLoop }) || store.loops.find((l) => l.status === "running") || store.loops[0];
+    if (target) await store.bindLoop(target.id).catch(() => {});
   }
   pollTimer = setInterval(pollLoop, 5000);
 });
