@@ -57,7 +57,10 @@ watch(() => stream.value.text.value, async () => {
 .cs-body {
   background: #16181c; color: #e8eaed;
   font-size: 11px; line-height: 1.65;
-  padding: 10px 12px; height: 480px; overflow-y: auto;
+  padding: 10px 12px;
+  /* 填满视口剩余空间：摘要卡+页签约 350px，上限 960px 防超高 */
+  height: clamp(420px, calc(100vh - 350px), 960px);
+  overflow-y: auto;
   white-space: pre-wrap; word-break: break-all;
   border-radius: 6px;
 }
