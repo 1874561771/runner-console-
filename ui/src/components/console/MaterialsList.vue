@@ -20,6 +20,8 @@ const props = defineProps({
 const fetched = ref([]);
 const loading = ref(false);
 const openLog = ref(""); // "runId|relpath"（同时只展开一个）
+const openShot = ref(null); // {url, name} 自定义放大层（带步骤名）
+const caseBlockEls = ref([]);
 
 watch(() => [props.runId, props.files, props.cases], load, { immediate: true });
 
@@ -73,6 +75,17 @@ function toggleLog(runId, rel) {
   const key = runId + "|" + rel;
   openLog.value = openLog.value === key ? "" : key;
 }
+
+/* case 表行点击 → 滚动定位到对应 case 材料块并高亮 */
+function scrollToCase(i) {
+  const el = caseBlockEls.value[i];
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+  el.classList.remove("hl");
+  requestAnimationFrame(() => el.classList.add("hl"));
+  setTimeout(() => el.classList.remove("hl"), 1800);
+}
+defineExpose({ scrollToCase });
 </script>
 
 <template>
@@ -95,7 +108,10 @@ function toggleLog(runId, rel) {
     </div>
 
     <!-- 每个 case 一块 -->
-    <div v-for="c in caseBlocks" :key="c.name" class="mat-group case-block">
+    <div
+      v-for="(c, i) in caseBlocks" :key="c.name"
+      :ref="(el) => (caseBlockEls[i] = el)" class="mat-group case-block"
+    >
       <div class="case-head">
         <span class="mono case-name">{{ c.short }}</span>
         <n-tag size="tiny" :type="caseBadge(c.status).tag" :bordered="false">{{ caseBadge(c.status).text }}</n-tag>
@@ -118,9 +134,10 @@ function toggleLog(runId, rel) {
       <div v-if="c.shots.length" class="mat-shots">
         <figure v-for="f in c.shots" :key="f.relpath" class="mat-shot">
           <n-image
-            :src="fileUrl(runId, f.relpath)"
+            :src="fileUrl(runId, f.relpath)" preview-disabled
             :title="stepName(f.relpath)"
             width="120" height="72" object-fit="cover" lazy
+            @click="openShot = { url: fileUrl(runId, f.relpath), name: stepName(f.relpath) }"
           />
           <figcaption :title="stepName(f.relpath)">{{ stepName(f.relpath) }}</figcaption>
         </figure>
@@ -143,8 +160,9 @@ function toggleLog(runId, rel) {
       <div v-if="unassigned.some((f) => f.kind === 'screenshot')" class="mat-shots">
         <figure v-for="f in unassigned.filter((x) => x.kind === 'screenshot')" :key="f.relpath" class="mat-shot">
           <n-image
-            :src="fileUrl(runId, f.relpath)" :title="stepName(f.relpath)"
+            :src="fileUrl(runId, f.relpath)" preview-disabled :title="stepName(f.relpath)"
             width="120" height="72" object-fit="cover" lazy
+            @click="openShot = { url: fileUrl(runId, f.relpath), name: stepName(f.relpath) }"
           />
           <figcaption :title="stepName(f.relpath)">{{ stepName(f.relpath) }}</figcaption>
         </figure>
@@ -162,6 +180,12 @@ function toggleLog(runId, rel) {
         <span class="mono">{{ f.relpath }}</span>
         <span class="faint">{{ fmtSize(f.size_bytes) }}</span>
       </a>
+    </div>
+
+    <!-- 截图放大层：图片下方显示步骤名；点遮罩空白处关闭 -->
+    <div v-if="openShot" class="shot-lightbox" @click.self="openShot = null">
+      <img :src="openShot.url" :alt="openShot.name" />
+      <div class="shot-name mono">{{ openShot.name }}</div>
     </div>
   </n-spin>
 </template>
@@ -183,11 +207,28 @@ function toggleLog(runId, rel) {
 .mat-log:hover { background: var(--surface-sub); border-color: var(--line); }
 .mat-shots { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .mat-shot { margin: 0; width: 120px; }
-.mat-shot :deep(img) { border-radius: 6px; border: 1px solid var(--line-soft); display: block; }
+.mat-shot :deep(img) { border-radius: 6px; border: 1px solid var(--line-soft); display: block; cursor: zoom-in; }
 .mat-shot figcaption {
   font-size: 11px; color: var(--ink-2); margin-top: 3px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-family: var(--font-mono);
+}
+.case-block.hl { box-shadow: 0 0 0 2px var(--accent); transition: box-shadow .3s; }
+.shot-lightbox {
+  position: fixed; inset: 0; z-index: 90;
+  background: rgba(10, 11, 13, .84);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  cursor: zoom-out;
+}
+.shot-lightbox img {
+  max-width: 92vw; max-height: 88vh;
+  border-radius: 6px; box-shadow: 0 12px 48px rgba(0, 0, 0, .5);
+  cursor: default;
+}
+.shot-name {
+  margin-top: 12px; padding: 5px 14px; border-radius: 14px;
+  background: rgba(255, 255, 255, .12); color: #f0f1ee; font-size: 12.5px;
+  max-width: 80vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .mat-file {
   display: flex; justify-content: space-between; gap: 10px;

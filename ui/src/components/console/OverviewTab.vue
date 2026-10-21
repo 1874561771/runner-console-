@@ -35,6 +35,12 @@ const displayCases = computed(() => {
 });
 const materialsFiles = computed(() => (showLive.value ? live.value?.artifacts : null) || null);
 
+const materialsEl = ref(null);
+/* case 表行点击 → 定位到材料区对应的 case 块（跨组件经 expose 方法） */
+function goToCase(i) {
+  materialsEl.value?.scrollToCase(i);
+}
+
 const fw = computed(() => [props.loop.firmware_branch, props.loop.firmware_build]
   .filter(Boolean).join(" · ") || "—");
 
@@ -102,7 +108,8 @@ onUnmounted(stopLive);
             {{ running ? "等待第一个 case 开始…" : "该 run 没有 case 明细" }}
           </td>
         </tr>
-        <tr v-for="c in displayCases" :key="c.name">
+        <tr v-for="(c, i) in displayCases" :key="c.name" class="case-row" :title="'点击查看该 case 的日志与截图'"
+          @click="goToCase(i)">
           <td class="mono cname">{{ c.name.split("/").pop() }}</td>
           <td><n-tag size="small" :type="caseBadge(c.status).tag" :bordered="false">{{ caseBadge(c.status).text }}</n-tag></td>
           <td class="mono">{{ c.duration_s != null ? c.duration_s + "s" : "—" }}</td>
@@ -116,7 +123,7 @@ onUnmounted(stopLive);
       <span v-if="activeRunId" class="faint mono" style="font-size: 11.5px">Run {{ activeRunId }}</span>
     </div>
     <MaterialsList
-      v-if="activeRunId" :run-id="activeRunId"
+      v-if="activeRunId" ref="materialsEl" :run-id="activeRunId"
       :files="materialsFiles" :cases="displayCases"
     />
   </div>
@@ -134,6 +141,8 @@ onUnmounted(stopLive);
 .sec-head .spacer { flex: 1; }
 .cases-table :deep(td) { font-size: 12.5px; }
 .cases-table :deep(th) { font-size: 12px; }
+.cases-table :deep(.case-row) { cursor: pointer; }
+.cases-table :deep(.case-row:hover td) { background: var(--accent-soft); }
 .cname { word-break: break-all; }
 .msg { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
