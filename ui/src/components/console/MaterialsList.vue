@@ -116,13 +116,14 @@ function toggleLog(runId, rel) {
         />
       </template>
       <div v-if="c.shots.length" class="mat-shots">
-        <n-image
-          v-for="f in c.shots" :key="f.relpath"
-          :src="fileUrl(runId, f.relpath)"
-          :title="stepName(f.relpath)"
-          width="120" height="72" object-fit="cover" lazy
-          class="mat-shot"
-        />
+        <figure v-for="f in c.shots" :key="f.relpath" class="mat-shot">
+          <n-image
+            :src="fileUrl(runId, f.relpath)"
+            :title="stepName(f.relpath)"
+            width="120" height="72" object-fit="cover" lazy
+          />
+          <figcaption :title="stepName(f.relpath)">{{ stepName(f.relpath) }}</figcaption>
+        </figure>
       </div>
     </div>
 
@@ -140,11 +141,13 @@ function toggleLog(runId, rel) {
         />
       </template>
       <div v-if="unassigned.some((f) => f.kind === 'screenshot')" class="mat-shots">
-        <n-image
-          v-for="f in unassigned.filter((x) => x.kind === 'screenshot')" :key="f.relpath"
-          :src="fileUrl(runId, f.relpath)" :title="stepName(f.relpath)"
-          width="120" height="72" object-fit="cover" lazy class="mat-shot"
-        />
+        <figure v-for="f in unassigned.filter((x) => x.kind === 'screenshot')" :key="f.relpath" class="mat-shot">
+          <n-image
+            :src="fileUrl(runId, f.relpath)" :title="stepName(f.relpath)"
+            width="120" height="72" object-fit="cover" lazy
+          />
+          <figcaption :title="stepName(f.relpath)">{{ stepName(f.relpath) }}</figcaption>
+        </figure>
       </div>
     </div>
 
@@ -179,7 +182,13 @@ function toggleLog(runId, rel) {
 }
 .mat-log:hover { background: var(--surface-sub); border-color: var(--line); }
 .mat-shots { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-.mat-shot :deep(img) { border-radius: 6px; border: 1px solid var(--line-soft); }
+.mat-shot { margin: 0; width: 120px; }
+.mat-shot :deep(img) { border-radius: 6px; border: 1px solid var(--line-soft); display: block; }
+.mat-shot figcaption {
+  font-size: 11px; color: var(--ink-2); margin-top: 3px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--font-mono);
+}
 .mat-file {
   display: flex; justify-content: space-between; gap: 10px;
   padding: 7px 10px; margin-bottom: 4px;

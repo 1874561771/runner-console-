@@ -277,7 +277,9 @@ def loop_live_cases(loop_id: str, user: dict = Depends(get_current_user)) -> dic
     """
     _loop_or_404(loop_id, user)
     manager = get_job_manager()
-    lines = manager.console_tail(loop_id, n=4000)
+    # 全量读取：RUN_ID 行在文件头、前面的 case 会被大日志滚出尾部窗口，
+    # 只取尾部会漏掉绝大部分 case（实测 14-case run 只剩 3 个）
+    lines = manager.console_tail(loop_id, n=200000)
 
     run_id: str | None = None
     cases: dict = {}  # name -> {name, status, duration_s}（插入序 = 运行序）
