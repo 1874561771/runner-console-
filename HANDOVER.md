@@ -214,7 +214,29 @@ git tag webui-archive && git push origin webui-archive
 
 ### 需要用户参与的节点
 
-- **M2 设备回归（P0/P1 之后随时可做）**：真机跑 smoke，验证 RUN_ID 行/run_meta.json/summary 新字段/旧 CLI 不变/旧 webui 兼容。命令与观察点见 `DEPLOY.md` §3。此步是"runner 契约改动提交"的门槛——**P5 第 1 步 commit 前必须完成**。
+- **M2 设备回归——数据核验已完成（2026-10-21）**：用户实测 14-case 真机 run
+  （loop 20261021142308-270fee / run 20261021142311）后核验：
+  - ✅ RUN_ID 行（`Run id=… dir=…`）捕获并正确入库
+  - ✅ summary.json 字段齐全（dut_model/dut_version/job_duration_s/pass_rate/outcome）
+  - ✅ ingest→DB→API 全链路（14 cases、145 个材料文件）
+  - ⏳ run_meta.json / summary 的 env_name+git_ref：**依赖 runner 仓未提交改动**
+    （framework/common/artifacts.py、run_summary.py、runner.py 等），随 P5 commit 生效
+  - ✅ 旧 CLI 兼容：runner 命令行参数未变更
+  - 结论：**M2 门槛已过，P5 原仓处置只剩"等新服务稳定一周"一个前置条件**。
+
+### 前端框架化迁移（2026-10-19 ~ 10-21，已收官）
+
+- 选型（用户确认）：Vue 3 + Naive UI + JavaScript + Vite；**目标机构建**
+  （部署机装 Node 18+，install.bat 自动构建；dist 不入库）
+- 结构：源码 `ui/src`（6 页 + 登录），构建产物 `ui/dist`；FastAPI 根路径 `/`
+  与 `/v2/` 挂同一份 dist；旧 vanilla `frontend/` 已删除
+- 迁移期修掉的后端真问题：SSE 对已结束 loop 延迟 ~15s 才发 end；
+  live-cases 只读尾部 4000 行漏掉绝大多数 case；STOP 语义恢复为
+  立即 terminate（迁移时误改为协作式）；summary.html 相对路径 404
+- 前端侧教训（写组件时注意）：naive-ui 2.45 自闭合 `n-tab-pane` 不渲染标签；
+  `.sch-rule-row[hidden]` 类的 display:flex 会覆盖 hidden；grid `1fr`
+  被 min-content 撑破要用 `minmax(0,1fr)`；pageerror 会被 interval 吞掉，
+  疑似"没反应"时先查 import 遗漏
 
 ## 三、关键契约速查
 
