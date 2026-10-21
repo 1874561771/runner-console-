@@ -1,7 +1,8 @@
 @echo off
 REM ============================================================
-REM RunnerConsole server starter (Windows)
-REM Prereq: config.toml configured; MySQL running
+REM  RunnerConsole server starter (Windows)
+REM  Prereq: config.toml configured; MySQL running; ui/dist built
+REM  (if ui/dist is missing run install.bat first - it builds the UI)
 REM ============================================================
 setlocal
 cd /d "%~dp0"
@@ -10,6 +11,13 @@ set "PY=.venv\Scripts\python.exe"
 
 if not exist "%PY%" (
     echo [RunnerConsole] venv not found. Run install.bat first.
+    pause
+    exit /b 1
+)
+
+if not exist "ui\dist\index.html" (
+    echo [RunnerConsole] ui\dist not found - frontend not built yet.
+    echo   Run install.bat once to build it. Requires Node.js 18+.
     pause
     exit /b 1
 )

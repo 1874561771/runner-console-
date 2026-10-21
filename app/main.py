@@ -54,7 +54,7 @@ logging.basicConfig(
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-FRONTEND_DIR = PROJECT_ROOT / "frontend"
+FRONTEND_DIR = PROJECT_ROOT / "ui" / "dist"   # Vue 前端构建产物（P6 起为唯一前端）
 
 
 @asynccontextmanager
@@ -165,11 +165,17 @@ def create_app() -> FastAPI:
     else:
         logger.info("ui/dist 不存在，/v2/ 暂不可用（npm run build 后生效）")
 
-    # 静态前端必须最后挂载："/" 通配，先注册的 /api 路由优先匹配
+    # 静态前端必须最后挂载："/" 通配，先注册的 /api 路由优先匹配。
+    # Vue 构建以 base=/v2/ 产出（资产引用 /v2/assets/...），因此 / 与 /v2
+    # 挂同一份 dist：根路径给用户，/v2/ 兼容旧书签，两者都可用。
     if FRONTEND_DIR.is_dir():
+        app.mount("/v2", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="ui-v2")
         app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
     else:
-        logger.warning("frontend 目录不存在，仅提供 API: %s", FRONTEND_DIR)
+        logger.warning(
+            "ui/dist 不存在，仅提供 API——先在 ui/ 下 npm install && npm run build: %s",
+            FRONTEND_DIR,
+        )
     return app
 
 

@@ -4,20 +4,24 @@
 
 ## 0. 一键部署（推荐，新机器 / 实验室部署用）
 
-前提：目标机器已装 **Python 3.11+** 和 **MySQL 8**（Server 本体脚本不代装，
+前提：目标机器已装 **Python 3.11+**、**Node.js 18+**（构建 Web 前端用，
+`winget install OpenJS.NodeJS.LTS`）和 **MySQL 8**（Server 本体脚本不代装，
 未装时向导会给出指引；`winget install Oracle.MySQL` 或官网 MSI 均可）。
 
 双击项目根目录的 **`install.bat`**，它会自动完成：
 
 1. 建 `.venv` 虚拟环境并安装依赖（首次约 1-2 分钟）
-2. 首次运行弹出交互向导 `setup_wizard.py`：
+2. 构建 Web 前端（`ui/` 下 `npm install` + `npm run build` 产出 `ui/dist`；
+   已构建过则跳过；改了 `ui/src` 下代码后删掉 `ui/dist` 重跑即可重新构建）
+3. 首次运行弹出交互向导 `setup_wizard.py`：
    - 输入 MySQL root 密码 → 自动建库 `runner_console`（utf8mb4）、
      建用户 `runner`（密码可自动生成）、授权
    - 交互确认 runner 仓库路径与管理员用户名 → 生成 `config.toml`
    - 自动执行 schema 迁移（幂等，重跑无害）
-3. 启动服务 `0.0.0.0:8765`（局域网内办公室电脑直接访问 `http://<实验室机IP>:8765/`）
+4. 启动服务 `0.0.0.0:8765`（局域网内办公室电脑直接访问 `http://<实验室机IP>:8765/`）
 
-日常运行再次双击 `install.bat` 即可（配置已存在则直接迁移 + 启动）。
+日常运行再次双击 `install.bat` 即可（配置已存在则直接迁移 + 启动）；
+或用 `start_server.bat`（跳过构建，直接迁移 + 启动，要求 `ui/dist` 已存在）。
 注意：本脚本窗口开着服务才在跑；要注册为 Windows 后台服务/开机自启，
 用 Task Scheduler 配一个开机运行 `install.bat`（最小化）的任务即可。
 
