@@ -13,7 +13,7 @@ const routes = [
       { path: "tasks", name: "tasks", component: () => import("../views/TasksView.vue"), meta: { title: "任务中心" } },
       { path: "dashboard", name: "dashboard", component: () => import("../views/DashboardView.vue"), meta: { title: "数据看板" } },
       { path: "resources", name: "resources", component: () => import("../views/ResourcesView.vue"), meta: { title: "资源" } },
-      { path: "admin", name: "admin", component: () => import("../views/PlaceholderView.vue"), meta: { title: "管理" } },
+      { path: "admin", name: "admin", component: () => import("../views/AdminView.vue"), meta: { title: "管理", adminOnly: true } },
     ],
   },
   { path: "/:pathMatch(.*)*", redirect: "/console" },
@@ -30,5 +30,6 @@ router.beforeEach(async (to) => {
   if (!auth.loaded) await auth.fetchMe();
   if (!auth.user && to.name !== "login") return { name: "login" };
   if (auth.user && to.name === "login") return { path: "/console" };
+  if (to.meta.adminOnly && !auth.isAdmin) return { path: "/console" };
   return true;
 });
