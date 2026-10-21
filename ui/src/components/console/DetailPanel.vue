@@ -47,7 +47,8 @@ const target = computed(() => {
     <n-card size="small" :content-style="{ padding: 0 }">
       <n-tabs type="line" size="small" animated default-value="overview" style="padding: 0 12px">
         <n-tab-pane name="overview" tab="概览">
-          <OverviewTab :loop="bound" />
+          <!-- :key：切换绑定任务时强制重建，避免内部 selectedRun 等状态串任务 -->
+          <OverviewTab :key="bound.id" :loop="bound" />
         </n-tab-pane>
         <n-tab-pane name="console" tab="控制台" display-directive="show">
           <ConsoleStream />
