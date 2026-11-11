@@ -61,3 +61,12 @@ def save_retention(retain_count: int, retain_days: int) -> None:
     """保存保留策略（调用方负责先做数值校验）。"""
     set_value("retain_count", int(retain_count))
     set_value("retain_days", int(retain_days))
+
+
+def get_job_log_debug() -> bool:
+    """job.log 是否记录框架调试信息（缺行默认关闭）。"""
+    return (get_value("job_log_debug", "0") or "0").strip() == "1"
+
+
+def save_job_log_debug(enabled: bool) -> None:
+    set_value("job_log_debug", "1" if enabled else "0")

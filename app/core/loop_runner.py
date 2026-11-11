@@ -32,8 +32,10 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from app.config import get_settings
 from app.core import env_lock, git_worktree
 from app.db.dao import loops as loops_dao
+from app.db.dao import settings as settings_dao
 
 if TYPE_CHECKING:
     from app.core.job_manager import JobManager
@@ -96,6 +98,7 @@ class LoopRunner:
         runner_py: str,
         artifacts_dir: Path,
         console_log: Path,
+        env_name: str = "",
     ) -> None:
         self.manager = manager
         self.loop_id = loop_id
@@ -115,6 +118,7 @@ class LoopRunner:
         self.runner_py = runner_py
         self.artifacts_dir = artifacts_dir
         self.console_log = console_log
+        self.env_name = env_name
         self.cwd = cwd
 
         self.lock = threading.Lock()
@@ -305,6 +309,10 @@ class LoopRunner:
             cmd[0] = self.runner_py
             child_env = dict(os.environ)
             child_env["PYTHONIOENCODING"] = "utf-8"
+            child_env["UI_AUTOMATION_JOB_LOG_DEBUG"] = "1" if self._job_log_debug() else "0"
+            child_env["RUNNER_CONSOLE_URL"] = get_settings().server.public_url.rstrip("/")
+            child_env["RUNNER_CONSOLE_LOOP_ID"] = self.loop_id
+            child_env["FIREBOX_ENV"] = self.env_name
             if self.loop_stop.is_set():
                 # STOP 在准备阶段就到达：不再启动子进程，跳过本次 iteration
                 self._append_console("\n[loop] 收到 STOP——跳过本次 iteration\n")
@@ -468,6 +476,14 @@ class LoopRunner:
             )
 
     # ----------------------------------------------------------- console
+
+    @staticmethod
+    def _job_log_debug() -> bool:
+        try:
+            return settings_dao.get_job_log_debug()
+        except Exception:
+            logger.warning("read job_log_debug setting failed; default off", exc_info=True)
+            return False
 
     def _append_console(self, text: str) -> None:
         try:

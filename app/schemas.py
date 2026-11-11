@@ -125,3 +125,9 @@ class SettingsIn(BaseModel):
 
     retain_count: int
     retain_days: int
+
+
+class RunSettingsIn(BaseModel):
+    """POST /api/admin/run-settings 请求体。"""
+
+    job_log_debug: bool

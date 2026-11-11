@@ -35,6 +35,8 @@ ENV_SEP = "__"
 class ServerConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8000
+    # 收件人可访问的外部地址（如 NAT 映射），用于结果邮件中的 Job 链接；空 = 不带链接
+    public_url: str = ""
 
 
 class DatabaseConfig(BaseModel):

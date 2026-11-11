@@ -9,6 +9,8 @@
 * GET   /api/admin/audit?offset=&limit=         → {items, total}（items 带 actor）
 * GET   /api/admin/settings                     → {retain_count, retain_days}
 * POST  /api/admin/settings                     → {ok, cleaned}（cleaned = 本次清理 run 数）
+* GET   /api/admin/run-settings                 → {job_log_debug}
+* POST  /api/admin/run-settings {job_log_debug} → {job_log_debug} + audit settings.update
 """
 
 from __future__ import annotations
@@ -23,8 +25,9 @@ from app.auth.local import USERNAME_RE, hash_password
 from app.core.retention import get_settings as get_retention_settings
 from app.core.retention import save_settings as save_retention_settings
 from app.db.dao import audit as audit_dao
+from app.db.dao import settings as settings_dao
 from app.db.dao import users as users_dao
-from app.schemas import RoleIn, SettingsIn, UserCreateIn
+from app.schemas import RoleIn, RunSettingsIn, SettingsIn, UserCreateIn
 
 router = APIRouter(prefix="/api")
 
@@ -162,3 +165,25 @@ def save_settings_view(body: SettingsIn, user: dict = Depends(require_admin)) ->
     # 契约：cleaned 为本次清理掉的 run 数（数字）
     cleaned = result.get("removed_runs", 0) if isinstance(result, dict) else 0
     return {"ok": True, "cleaned": int(cleaned)}
+
+
+@router.get("/admin/run-settings")
+def get_run_settings_view(user: dict = Depends(require_admin)) -> dict:
+    return {"job_log_debug": settings_dao.get_job_log_debug()}
+
+
+@router.post("/admin/run-settings")
+def save_run_settings_view(body: RunSettingsIn, user: dict = Depends(require_admin)) -> dict:
+    old = settings_dao.get_job_log_debug()
+    settings_dao.save_job_log_debug(body.job_log_debug)
+    audit_dao.insert_audit(
+        user["id"],
+        "settings.update",
+        {
+            "keys": ["job_log_debug"],
+            "old": {"job_log_debug": old},
+            "new": {"job_log_debug": body.job_log_debug},
+            "operator": user["username"],
+        },
+    )
+    return {"job_log_debug": body.job_log_debug}

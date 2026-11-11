@@ -3,7 +3,7 @@
 import { ref, onMounted } from "vue";
 import {
   NCard, NTabs, NTabPane, NButton, NTag, NSelect, NModal, NForm, NFormItem,
-  NInput, NInputNumber, useMessage,
+  NInput, NInputNumber, NSwitch, useMessage,
 } from "naive-ui";
 import { apiFetch, asJson } from "../api/client.js";
 import { useAuthStore } from "../stores/auth.js";
@@ -88,6 +88,7 @@ const ACTION_BADGE = {
   "user.role": { tag: "warning", text: "改角色" },
   "user.reset": { tag: "warning", text: "重置口令" },
   "retain.save": { tag: "warning", text: "保留策略" },
+  "settings.update": { tag: "warning", text: "改设置" },
   "env.del": { tag: "error", text: "删环境" },
   "upload.del": { tag: "error", text: "删上传" },
   "lock.release": { tag: "error", text: "强制释放" },
@@ -119,13 +120,37 @@ async function saveSettings() {
   } catch (err) { $msg.error(err.message || "保存失败"); }
 }
 
-onMounted(() => { loadUsers(); loadAudit(); loadSettings(); });
+/* ── 运行设置 ── */
+const jobLogDebug = ref(false);
+const jobLogDebugSaving = ref(false);
+async function loadRunSettings() {
+  const d = await apiFetch("/api/admin/run-settings").then(asJson).catch(() => ({}));
+  jobLogDebug.value = !!d?.job_log_debug;
+}
+async function toggleJobLogDebug(val) {
+  jobLogDebugSaving.value = true;
+  try {
+    const d = await apiFetch("/api/admin/run-settings", {
+      method: "POST",
+      body: { job_log_debug: val },
+    }).then(asJson);
+    jobLogDebug.value = !!d?.job_log_debug;
+    $msg.success(val ? "job.log 将记录框架调试信息（下次运行生效）" : "job.log 不再记录框架调试信息（下次运行生效）");
+    loadAudit();
+  } catch (err) {
+    $msg.error(err.message || "保存失败");
+  } finally {
+    jobLogDebugSaving.value = false;
+  }
+}
+
+onMounted(() => { loadUsers(); loadAudit(); loadSettings(); loadRunSettings(); });
 </script>
 
 <template>
   <div class="view-head">
     <h1 class="view-title">管理</h1>
-    <span class="faint" style="font-size: 12.5px">用户 / 审计 / 保留策略（仅管理员）</span>
+    <span class="faint" style="font-size: 12.5px">用户 / 审计 / 保留策略 / 运行设置（仅管理员）</span>
   </div>
 
   <n-card size="small" :content-style="{ padding: '6px 14px 14px' }">
@@ -230,6 +255,21 @@ onMounted(() => { loadUsers(); loadAudit(); loadSettings(); });
             </n-form-item>
             <n-button type="primary" @click="saveSettings">保存</n-button>
           </n-form>
+        </div>
+      </n-tab-pane>
+
+      <!-- ── 运行设置 ── -->
+      <n-tab-pane name="run" tab="运行设置" display-directive="show:lazy">
+        <div style="max-width: 560px">
+          <n-form label-placement="left" size="small" label-width="190">
+            <n-form-item label="job.log 记录框架调试信息">
+              <n-switch :value="jobLogDebug" :loading="jobLogDebugSaving" @update:value="toggleJobLogDebug" />
+            </n-form-item>
+          </n-form>
+          <p class="faint" style="font-size: 12.5px; margin-top: 0">
+            控制台始终只显示会话记录（命令与输出）和告警。打开后，job.log / case.log 额外记录框架内部日志
+            （登录握手、重试细节、paramiko 等第三方库 DEBUG），便于排查问题；对之后启动的运行生效。
+          </p>
         </div>
       </n-tab-pane>
     </n-tabs>

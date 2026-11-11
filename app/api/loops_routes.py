@@ -26,6 +26,7 @@ from app.api.common import (
     artifacts_root,
     env_lock_view,
     fmt_dt,
+    sort_artifacts,
     parse_days,
     parse_int,
 )
@@ -42,8 +43,9 @@ from app.schemas import RunIn
 router = APIRouter(prefix="/api")
 
 # 运行中实时解析：console 里的 case 状态行（runner 契约格式）
-_LIVE_RUN_ID_RE = re.compile(r"Run id=(\S+)")
-_LIVE_CASE_START_RE = re.compile(r"=====\s*CASE\s+(\S+)\s+=====")
+_LIVE_RUN_ID_RE = re.compile(r"(?:Run id=|^RUN_ID:\s*)(\S+)")
+# 旧格式 "===== CASE x ====="；会话记录格式 "════════ CASE x ════════"
+_LIVE_CASE_START_RE = re.compile(r"[=═]{5,}\s*CASE\s+(\S+)\s+[=═]{5,}")
 _LIVE_RESULT_RE = re.compile(r"RESULT\s+(\S+)\s+->\s+(\w+)")
 _LIVE_DURATION_RE = re.compile(r"CASE\s+(\S+)\s+duration=([\d.]+)s")
 _LIVE_SETUP_FAIL_RE = re.compile(r"Case setup FAILED for (\S+)")
@@ -307,5 +309,5 @@ def loop_live_cases(loop_id: str, user: dict = Depends(get_current_user)) -> dic
         if run_dir.is_dir():
             from app.ingest.run_ingest import _scan_artifacts  # noqa: PLC0415
 
-            artifacts = _scan_artifacts(run_dir)
+            artifacts = sort_artifacts(_scan_artifacts(run_dir))
     return {"run_id": run_id, "cases": list(cases.values()), "artifacts": artifacts}

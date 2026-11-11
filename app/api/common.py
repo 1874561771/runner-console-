@@ -7,11 +7,23 @@ path helper（只依赖 app.config / app.core.env_lock）。
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from pathlib import Path
 
 from app.config import get_settings
 from app.core import env_lock
+
+_DIGITS_RE = re.compile(r"(\d+)")
+
+
+def natural_key(text: str) -> list:
+    """自然排序 key：数字段按数值比较（Step2 排在 Step10 前）。"""
+    return [int(p) if p.isdigit() else p.lower() for p in _DIGITS_RE.split(text or "")]
+
+
+def sort_artifacts(files: list[dict]) -> list[dict]:
+    return sorted(files, key=lambda f: natural_key(str(f.get("relpath") or "")))
 
 
 # ------------------------------------------------------------------ time

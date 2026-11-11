@@ -207,6 +207,7 @@ class JobManager:
             runner_py=self.runner_py,
             artifacts_dir=self.artifacts_root,
             console_log=console,
+            env_name=str(env_row.get("name") or env_row["id"]),
         )
         # 先落库（status='running'），锁失败时回写 stopped——与原版一致，
         # 保证启动失败也有迹可查。

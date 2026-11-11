@@ -33,6 +33,8 @@ function baseName(caseName) {
 function belongsTo(rel, caseName) {
   return rel.includes(`/${baseName(caseName)}/`);
 }
+const naturalCmp = (a, b) =>
+  a.relpath.localeCompare(b.relpath, undefined, { numeric: true, sensitivity: "base" });
 
 const jobLogs = computed(() => all.value.filter((f) => f.kind === "job_log"));
 const miscFiles = computed(() =>
@@ -43,7 +45,7 @@ const caseBlocks = computed(() => props.cases.map((c) => ({
   short: baseName(c.name),
   status: c.status,
   logs: all.value.filter((f) => f.kind === "case_log" && belongsTo(f.relpath, c.name)),
-  shots: all.value.filter((f) => f.kind === "screenshot" && belongsTo(f.relpath, c.name)),
+  shots: all.value.filter((f) => f.kind === "screenshot" && belongsTo(f.relpath, c.name)).sort(naturalCmp),
 })));
 
 const unassigned = computed(() => {

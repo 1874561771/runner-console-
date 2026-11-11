@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
+from app.api.common import sort_artifacts
 from app.api.deps import get_current_user
 from app.api.runs_routes import get_run_or_404
 from app.db.dao import runs as runs_dao
@@ -30,4 +31,4 @@ def list_run_artifacts(
     user: dict = Depends(get_current_user),
 ) -> list[dict]:
     get_run_or_404(run_id, user)
-    return runs_dao.list_artifacts(run_id, kind or None)
+    return sort_artifacts(runs_dao.list_artifacts(run_id, kind or None))
