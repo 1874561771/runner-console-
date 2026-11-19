@@ -1,40 +1,39 @@
 <script setup>
 /* 运行台（P1a/P1b）：左 = 配置卡 + 最近任务；右 = 详情面板（概览/控制台） */
 import { onMounted, onUnmounted, ref, computed } from "vue";
-import { NCard, NButton, NTag, NEmpty, useMessage } from "naive-ui";
+import { NCard, NButton, NEmpty, NSpin, useMessage } from "naive-ui";
 import { useConsoleStore } from "../stores/consoleStore.js";
 import { apiFetch, asJson } from "../api/client.js";
 import ConfigCard from "../components/console/ConfigCard.vue";
 import DetailPanel from "../components/console/DetailPanel.vue";
 import { useAuthStore } from "../stores/auth.js";
+import StatusTag from "../components/common/StatusTag.vue";
 
 const store = useConsoleStore();
 const auth = useAuthStore();
 const message = useMessage();
 const busy = ref(false);
+const loading = ref(true);
 let pollTimer = null;
 
 onMounted(async () => {
-  await store.loadAll();
-  // 深链：/console?loop=<id>（定时任务页/任务中心跳转）
-  const urlLoop = new URLSearchParams(location.hash.split("?")[1] || "").get("loop");
-  if (!store.loop) {
-    const target = (urlLoop && { id: urlLoop }) || store.loops.find((l) => l.status === "running") || store.loops[0];
-    if (target) await store.bindLoop(target.id).catch(() => {});
+  try {
+    await store.loadAll();
+    // 深链：/console?loop=<id>（定时任务页/任务中心跳转）
+    const urlLoop = new URLSearchParams(location.hash.split("?")[1] || "").get("loop");
+    if (!store.loop) {
+      const target = (urlLoop && { id: urlLoop }) || store.loops.find((l) => l.status === "running") || store.loops[0];
+      if (target) await store.bindLoop(target.id).catch(() => {});
+    }
+    pollTimer = setInterval(pollLoop, 5000);
+  } finally {
+    loading.value = false;
   }
-  pollTimer = setInterval(pollLoop, 5000);
 });
 onUnmounted(() => { if (pollTimer) clearInterval(pollTimer); });
 
 const bound = computed(() => store.loop?.loop || null);
 const recent = computed(() => store.loops.slice(0, 8));
-
-const STATUS_TAG = {
-  running: { type: "info", text: "RUNNING" },
-  stopped: { type: "warning", text: "STOPPED" },
-  failed: { type: "error", text: "FAILED" },
-  done: { type: "success", text: "DONE" },
-};
 
 /* 5s 轮询绑定 loop 状态；状态变化时刷新最近任务列表 */
 async function pollLoop() {
@@ -75,7 +74,12 @@ async function pickLoop(id) {
 </script>
 
 <template>
-  <div class="rc-layout">
+  <div class="view-head">
+    <h1 class="view-title">运行台</h1>
+    <span class="faint">配置并启动测试，或查看最近任务的实时状态</span>
+  </div>
+  <n-spin :show="loading">
+    <div class="rc-layout">
     <div class="rc-left">
       <ConfigCard v-if="auth.user" @run="onRun" @stop="onStop" />
       <n-card v-else title="游客只读模式" size="small">
@@ -90,12 +94,13 @@ async function pickLoop(id) {
         <template v-if="recent.length">
           <div
             v-for="l in recent" :key="l.id"
+            role="button" tabindex="0"
             class="recent-item" :class="{ on: bound?.id === l.id }"
             @click="pickLoop(l.id)"
+            @keydown.enter.prevent="pickLoop(l.id)"
+            @keydown.space.prevent="pickLoop(l.id)"
           >
-            <n-tag size="small" :type="(STATUS_TAG[l.status] || {}).type || 'default'" :bordered="false">
-              {{ (STATUS_TAG[l.status] || {}).text || l.status }}
-            </n-tag>
+            <StatusTag :status="l.status" />
             <span class="mono rid">{{ l.id }}</span>
             <span class="faint" style="font-size: 11.5px">{{ l.created_at || "" }}</span>
           </div>
@@ -116,7 +121,8 @@ async function pickLoop(id) {
         </n-empty>
       </n-card>
     </div>
-  </div>
+    </div>
+  </n-spin>
 </template>
 
 <style scoped>
@@ -130,5 +136,6 @@ async function pickLoop(id) {
 }
 .recent-item:hover { background: var(--surface-sub); }
 .recent-item.on { background: var(--accent-soft); }
+.recent-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .rid { font-size: 12px; }
 </style>

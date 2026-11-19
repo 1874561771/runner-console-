@@ -1,21 +1,16 @@
 <script setup>
 /* 右侧详情：摘要卡 + 页签（概览 / 控制台） */
 import { computed } from "vue";
-import { NCard, NTag, NTabs, NTabPane } from "naive-ui";
+import { NCard, NTabs, NTabPane } from "naive-ui";
 import { useConsoleStore } from "../../stores/consoleStore.js";
 import { fmtDuration } from "../../utils/format.js";
 import OverviewTab from "./OverviewTab.vue";
 import ConsoleStream from "./ConsoleStream.vue";
+import StatusTag from "../common/StatusTag.vue";
 
 const store = useConsoleStore();
 const bound = computed(() => store.loop?.loop || null);
 const running = computed(() => bound.value?.status === "running");
-const STATUS_TAG = {
-  running: { type: "info", text: "RUNNING" },
-  stopped: { type: "warning", text: "STOPPED" },
-  failed: { type: "error", text: "FAILED" },
-  done: { type: "success", text: "DONE" },
-};
 const latestRun = computed(() => [...(bound.value?.jobs || [])]
   .reverse().find((j) => j.run_id && j.has_summary));
 const target = computed(() => {
@@ -31,9 +26,7 @@ const target = computed(() => {
         <span class="mono" style="font-size: 14px">{{ bound.id }}</span>
       </template>
       <template #header-extra>
-        <n-tag :type="(STATUS_TAG[bound.status] || {}).type || 'default'" :bordered="false">
-          {{ (STATUS_TAG[bound.status] || {}).text || bound.status }}
-        </n-tag>
+        <StatusTag :status="bound.status" />
       </template>
       <div class="meta-line faint">
         {{ bound.env_name || bound.env_id || "—" }} · {{ bound.product || "—" }} ·

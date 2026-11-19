@@ -50,7 +50,7 @@ async function logout() {
         @click="router.push({ name: 'login', query: { redirect: route.fullPath } })">登录</n-button>
     </header>
     <div class="app-main">
-      <nav class="app-nav">
+      <nav class="app-nav" aria-label="主导航">
         <router-link v-for="n in visibleNavs" :key="n.to" :to="n.to">{{ n.label }}</router-link>
       </nav>
       <main class="app-content">

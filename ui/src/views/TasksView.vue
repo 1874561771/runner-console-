@@ -1,10 +1,11 @@
 <script setup>
 /* 任务中心（P4）：统计卡 + 过滤条 + 任务列表 + 右侧 Inspector（:key 切换重建） */
 import { ref, computed, onMounted } from "vue";
-import { NCard, NButton, NTag, NSelect, NEmpty, NPopconfirm, useMessage } from "naive-ui";
+import { NCard, NButton, NSelect, NEmpty, NPopconfirm, NSpin, useMessage } from "naive-ui";
 import { apiFetch, asJson } from "../api/client.js";
 import Inspector from "../components/tasks/Inspector.vue";
 import { useAuthStore } from "../stores/auth.js";
+import StatusTag from "../components/common/StatusTag.vue";
 
 const $msg = useMessage();
 const auth = useAuthStore();
@@ -34,13 +35,6 @@ const statusOptions = [
   { value: "stopped", label: "已停止" },
 ];
 const envOptions = ref([]);
-
-const STATUS_TAG = {
-  running: { type: "info", text: "RUNNING" },
-  stopped: { type: "warning", text: "STOPPED" },
-  failed: { type: "error", text: "FAILED" },
-  done: { type: "success", text: "DONE" },
-};
 
 onMounted(async () => {
   envs.value = await apiFetch("/api/envs").then(asJson).catch(() => []);
@@ -118,28 +112,30 @@ const statCards = computed(() => {
   </div>
 
   <div class="tk-layout">
-    <n-card size="small" class="tk-list">
-      <n-empty v-if="!rows.length && !loading" description="没有符合筛选条件的任务" style="padding: 24px 0" />
-      <div
-        v-for="l in rows" :key="l.id"
-        class="tk-item" :class="{ on: selectedId === l.id }"
-        @click="selectedId = l.id"
-      >
-        <n-tag size="small" :type="(STATUS_TAG[l.status] || {}).type || 'default'" :bordered="false">
-          {{ (STATUS_TAG[l.status] || {}).text || l.status }}
-        </n-tag>
-        <span class="mono rid">{{ l.id }}</span>
-        <span class="faint" style="font-size: 11.5px">{{ l.env_name || "" }} · {{ l.suite || l.test || "" }}</span>
-        <span class="spacer"></span>
-        <n-popconfirm v-if="auth.user && l.status === 'running'" @positive-click="onStop(l)">
-          <template #trigger>
-            <n-button size="tiny" type="error" secondary @click.stop>停止</n-button>
-          </template>
-          确定停止「{{ l.id }}」？
-        </n-popconfirm>
-        <span class="faint mono" style="font-size: 11px">{{ l.created_at || "" }}</span>
-      </div>
-    </n-card>
+    <n-spin :show="loading">
+      <n-card size="small" class="tk-list">
+        <n-empty v-if="!rows.length && !loading" description="没有符合筛选条件的任务" style="padding: 24px 0" />
+        <div
+          v-for="l in rows" :key="l.id" role="button" tabindex="0"
+          class="tk-item" :class="{ on: selectedId === l.id }"
+          @click="selectedId = l.id"
+          @keydown.enter.prevent="selectedId = l.id"
+          @keydown.space.prevent="selectedId = l.id"
+        >
+          <StatusTag :status="l.status" />
+          <span class="mono rid">{{ l.id }}</span>
+          <span class="faint" style="font-size: 11.5px">{{ l.env_name || "" }} · {{ l.suite || l.test || "" }}</span>
+          <span class="spacer"></span>
+          <n-popconfirm v-if="auth.user && l.status === 'running'" @positive-click="onStop(l)">
+            <template #trigger>
+              <n-button size="tiny" type="error" secondary @click.stop>停止</n-button>
+            </template>
+            确定停止「{{ l.id }}」？
+          </n-popconfirm>
+          <span class="faint mono" style="font-size: 11px">{{ l.created_at || "" }}</span>
+        </div>
+      </n-card>
+    </n-spin>
 
     <div class="tk-right">
       <Inspector v-if="selectedId" :key="selectedId" :loop-id="selectedId" @changed="load" />
@@ -158,6 +154,7 @@ const statCards = computed(() => {
 .filter-row { display: flex; gap: 10px; margin-bottom: 14px; }
 .filter-row .spacer { flex: 1; }
 .tk-layout { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 16px; align-items: start; }
+.tk-layout > :deep(.n-spin-container) { min-width: 0; }
 @media (max-width: 1080px) { .tk-layout { grid-template-columns: 1fr; } }
 .tk-item {
   display: flex; align-items: center; gap: 8px; padding: 7px 10px;
@@ -165,6 +162,12 @@ const statCards = computed(() => {
 }
 .tk-item:hover { background: var(--surface-sub); }
 .tk-item.on { background: var(--accent-soft); }
+.tk-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .tk-item .spacer { flex: 1; }
 .rid { font-size: 12px; }
+@media (max-width: 768px) {
+  .stat-row { grid-template-columns: repeat(2, 1fr); }
+  .filter-row { flex-wrap: wrap; }
+  .filter-row :deep(.n-select) { flex: 1 1 130px; width: auto !important; }
+}
 </style>

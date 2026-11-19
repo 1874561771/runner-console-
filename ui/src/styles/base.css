@@ -75,3 +75,17 @@ a { color: var(--accent-hover); text-decoration: none; }
   color: var(--ink-2); font-size: 12.5px; white-space: nowrap;
 }
 .table tbody tr:hover { background: var(--surface-sub); }
+
+@media (max-width: 768px) {
+  .app-topbar { padding: 0 12px; gap: 8px; }
+  .app-topbar > span:nth-child(2) { display: none; }
+  .app-topbar .user { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .app-main { flex-direction: column; }
+  .app-nav {
+    width: 100%; padding: 7px 10px; flex-direction: row; overflow-x: auto;
+    border-right: 0; border-bottom: 1px solid var(--line); gap: 4px;
+  }
+  .app-nav a { padding: 7px 11px; white-space: nowrap; }
+  .app-content { padding: 14px 12px; }
+  .table { display: block; overflow-x: auto; white-space: nowrap; }
+}

@@ -4,10 +4,11 @@ import { ref, onMounted } from "vue";
 import {
   NCard, NButton, NTag, NEmpty, NModal, NForm, NFormItem, NInput, NSelect,
   NInputNumber, NCheckbox, NTabs, NTabPane, NTimePicker, NDatePicker,
-  NPopconfirm, useMessage,
+  NPopconfirm, NSpin, useMessage,
 } from "naive-ui";
 import { apiFetch } from "../api/client.js";
 import CasePicker from "../components/console/CasePicker.vue";
+import StatusTag from "../components/common/StatusTag.vue";
 
 const $msg = useMessage();
 
@@ -36,15 +37,6 @@ async function refresh() {
     suites.value = Array.isArray(suiteList) ? suiteList : [];
   } finally { loading.value = false; }
 }
-
-const STATUS_BADGE = {
-  started: { tag: "info", text: "已发起" },
-  start_error: { tag: "error", text: "发起失败" },
-  missed: { tag: "warning", text: "已错过" },
-  ok: { tag: "success", text: "完成" },
-  failed: { tag: "error", text: "失败" },
-  stopped: { tag: "warning", text: "已停止" },
-};
 
 function targetText(p) {
   if (!p) return "—";
@@ -211,10 +203,11 @@ async function saveEditor() {
     <n-button type="primary" @click="openEditor(null)">＋ 新建定时任务</n-button>
   </div>
 
-  <n-card size="small">
-    <n-empty v-if="!rows.length && !loading" description="还没有定时任务——点右上角创建：每天固定时间自动运行，或指定时间运行一次"
-      style="padding: 30px 0" />
-    <table v-else class="table">
+  <n-spin :show="loading">
+    <n-card size="small">
+      <n-empty v-if="!rows.length && !loading" description="还没有定时任务——点右上角创建：每天固定时间自动运行，或指定时间运行一次"
+        style="padding: 30px 0" />
+      <table v-else class="table">
       <thead>
         <tr><th>名称</th><th>运行配置</th><th>规则</th><th>下次运行</th><th>上次运行</th><th style="text-align:right">操作</th></tr>
       </thead>
@@ -234,11 +227,9 @@ async function saveEditor() {
           <td>{{ ruleText(s) }}</td>
           <td class="mono">{{ s.enabled ? s.next_run_at || "—" : "—" }}</td>
           <td>
-            <n-tag v-if="s.last_status" size="small" :type="(STATUS_BADGE[s.last_status] || {}).tag || 'default'" :bordered="false">
-              {{ (STATUS_BADGE[s.last_status] || {}).text || s.last_status }}
-            </n-tag>
-            <a v-if="s.last_loop_id" class="mono link" href="javascript:void(0)"
-              @click="$router.push(`/console?loop=${s.last_loop_id}`)">{{ s.last_loop_id }}</a>
+            <StatusTag v-if="s.last_status" :status="s.last_status" />
+            <router-link v-if="s.last_loop_id" class="mono link"
+              :to="`/console?loop=${s.last_loop_id}`">{{ s.last_loop_id }}</router-link>
             <span v-else class="faint">—</span>
           </td>
           <td style="text-align:right">
@@ -256,8 +247,9 @@ async function saveEditor() {
           </td>
         </tr>
       </tbody>
-    </table>
-  </n-card>
+      </table>
+    </n-card>
+  </n-spin>
 
   <n-modal v-model:show="editorShow" preset="card"
     :title="editing ? `编辑定时任务：${editing.name}` : '新建定时任务'" style="width: 620px">

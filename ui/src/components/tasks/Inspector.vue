@@ -2,13 +2,14 @@
 /* 任务中心 Inspector：选中 loop 的详情（摘要 + jobs + 概览 + SSE 控制台）。
  * 自管理轮询与流实例——不与运行台共享绑定，互不干扰 */
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
-import { NCard, NTag, NTabs, NTabPane, NButton, NTable, useMessage } from "naive-ui";
+import { NCard, NTabs, NTabPane, NButton, NTable, useMessage } from "naive-ui";
 import { apiFetch, asJson } from "../../api/client.js";
 import { createConsoleStream } from "../../composables/useConsoleStream.js";
 import { fmtDuration } from "../../utils/format.js";
 import OverviewTab from "../console/OverviewTab.vue";
 import ConsoleStream from "../console/ConsoleStream.vue";
 import { useAuthStore } from "../../stores/auth.js";
+import StatusTag from "../common/StatusTag.vue";
 
 const props = defineProps({
   loopId: { type: String, required: true },
@@ -21,13 +22,6 @@ const loop = ref(null);
 const missing = ref(false);
 const stream = createConsoleStream();
 let timer = null;
-
-const STATUS_TAG = {
-  running: { type: "info", text: "RUNNING" },
-  stopped: { type: "warning", text: "STOPPED" },
-  failed: { type: "error", text: "FAILED" },
-  done: { type: "success", text: "DONE" },
-};
 
 async function load() {
   try {
@@ -67,9 +61,7 @@ async function onStop() {
       <n-card size="small">
         <template #header><span class="mono" style="font-size: 14px">{{ loop.id }}</span></template>
         <template #header-extra>
-          <n-tag :type="(STATUS_TAG[loop.status] || {}).type || 'default'" :bordered="false">
-            {{ (STATUS_TAG[loop.status] || {}).text || loop.status }}
-          </n-tag>
+          <StatusTag :status="loop.status" />
         </template>
         <div class="meta-line faint">
           {{ loop.env_name || loop.env_id || "—" }} · {{ loop.product || "—" }} ·
@@ -96,7 +88,7 @@ async function onStop() {
                 <tr v-if="!jobs.length"><td colspan="5" class="faint" style="text-align:center">暂无轮次</td></tr>
                 <tr v-for="j in [...jobs].reverse()" :key="j.id">
                   <td>#{{ j.iteration }}</td>
-                  <td><n-tag size="small" :type="j.status === 'pass' ? 'success' : j.status === 'fail' ? 'error' : 'warning'" :bordered="false">{{ j.status }}</n-tag></td>
+                  <td><StatusTag :status="j.status" /></td>
                   <td class="mono">{{ j.run_id || "—" }}</td>
                   <td class="mono faint">{{ j.started_at || "—" }}</td>
                   <td class="mono faint">{{ j.ended_at || "—" }}</td>
