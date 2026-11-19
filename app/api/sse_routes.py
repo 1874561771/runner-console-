@@ -22,7 +22,7 @@
   执行，文件 IO 与 DB 查询都不会阻塞事件循环。
 * 认证复用 deps.get_current_user：Cookie rc_session 优先、Bearer 兼容
   （EventSource 不能带 header，浏览器对同源请求自动携带 Cookie）。
-* 权限：loop owner 或 admin（perms.can_access_owner），否则 403；
+* 权限：loop owner、admin 或环境授权用户（perms.can_view_resource），否则 403；
   loop 不存在返回 404。
 """
 
@@ -38,7 +38,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from app.api.deps import get_current_user
+from app.api.deps import maybe_current_user
 from app.auth import perms
 from app.core.job_manager import get_job_manager
 from app.db.dao import loops as loops_dao
@@ -197,11 +197,13 @@ def _console_events_inner(loop_id: str, last_event_id: int | None) -> Iterator[s
 
 # ----------------------------------------------------------------- routes
 
-def _console_response(loop_id: str, request: Request, user: dict) -> StreamingResponse:
+def _console_response(
+    loop_id: str, request: Request, user: dict | None
+) -> StreamingResponse:
     row = loops_dao.get_loop(loop_id)
     if row is None:
         raise HTTPException(status_code=404, detail="loop not found")
-    if not perms.can_access_owner(user, row.get("owner_id")):
+    if not perms.can_view_resource(user, row.get("owner_id"), row.get("env_id")):
         raise HTTPException(status_code=403, detail="forbidden")
 
     raw = (request.headers.get("last-event-id") or "").strip()
@@ -228,7 +230,7 @@ def _console_response(loop_id: str, request: Request, user: dict) -> StreamingRe
 def stream_loop_console(
     loop_id: str,
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: dict | None = Depends(maybe_current_user),
 ) -> StreamingResponse:
     """loop 控制台 SSE 实时流（EventSource；会话经 Cookie rc_session）。"""
     return _console_response(loop_id, request, user)
@@ -238,7 +240,7 @@ def stream_loop_console(
 def stream_console_compat(
     request: Request,
     loop_id: str = "",
-    user: dict = Depends(get_current_user),
+    user: dict | None = Depends(maybe_current_user),
 ) -> StreamingResponse:
     """兼容别名：frontend api.js openConsoleStream 现行请求
     GET /api/streams/console?loop_id=…；与主路由行为完全一致。"""

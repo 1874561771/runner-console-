@@ -7,6 +7,9 @@ REM  Later runs: frontend build (if missing) + migrate + serve
 REM ============================================================
 setlocal
 cd /d "%~dp0"
+REM Avoid GBK decode errors on UTF-8 requirement/comment files under Chinese Windows
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
 
 set "PY=.venv\Scripts\python.exe"
 

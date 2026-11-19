@@ -18,7 +18,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends
 
 from app.api.common import env_lock_view
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, maybe_current_user
 from app.auth import perms
 from app.core import git_worktree
 from app.core.job_manager import PRODUCTS, get_job_manager
@@ -28,11 +28,16 @@ router = APIRouter(prefix="/api")
 
 
 @router.get("/status")
-def status(user: dict = Depends(get_current_user)) -> dict:
+def status(user: dict | None = Depends(maybe_current_user)) -> dict:
     manager = get_job_manager()
     snapshots = [r.snapshot() for r in manager.active()]
     if not perms.is_admin(user):
-        snapshots = [s for s in snapshots if s.get("owner_id") == user["id"]]
+        env_ids_ok = perms.viewable_env_ids(user)
+        snapshots = [
+            s for s in snapshots
+            if (user and s.get("owner_id") == user["id"])
+            or s.get("env_id") in env_ids_ok
+        ]
 
     # env_name 批量补齐（active_loops 用）
     env_ids = {s.get("env_id") for s in snapshots if s.get("env_id")}
@@ -68,7 +73,10 @@ def status(user: dict = Depends(get_current_user)) -> dict:
         consoles[loop_id] = manager.console_tail(loop_id, 60)
 
     env_locks = []
+    visible_envs = perms.viewable_env_ids(user)
     for row in pool.query("SELECT id, relpath FROM environments"):
+        if row["id"] not in visible_envs and not perms.is_admin(user):
+            continue
         lock = env_lock_view(row.get("relpath"))
         env_locks.append({"env_id": row["id"], **lock})
 

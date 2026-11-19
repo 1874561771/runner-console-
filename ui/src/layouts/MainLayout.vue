@@ -11,14 +11,17 @@ const dialog = useDialog();
 const message = useMessage();
 
 const navs = [
-  { to: "/console", label: "运行台" },
+  { to: "/console", label: "运行台", public: true },
   { to: "/schedules", label: "定时任务" },
-  { to: "/tasks", label: "任务中心" },
+  { to: "/tasks", label: "任务中心", public: true },
   { to: "/dashboard", label: "数据看板" },
   { to: "/resources", label: "资源" },
-  { to: "/admin", label: "管理" },
+  { to: "/admin", label: "管理", adminOnly: true },
 ];
 const title = computed(() => route.meta.title || "Runner Console");
+const visibleNavs = computed(() => navs.filter((n) =>
+  (!n.adminOnly || auth.isAdmin) && (auth.user || n.public)
+));
 
 async function logout() {
   dialog.warning({
@@ -41,12 +44,14 @@ async function logout() {
       <span class="brand">Runner Console</span>
       <span style="font-size:12px;opacity:.6">{{ title }}</span>
       <span class="spacer"></span>
-      <span class="user">{{ auth.displayName }}（{{ auth.user?.role }}）</span>
-      <n-button size="tiny" quaternary color="#f0f1ee" @click="logout">退出</n-button>
+      <span class="user">{{ auth.user ? `${auth.displayName}（${auth.user.role}）` : "游客（只读）" }}</span>
+      <n-button v-if="auth.user" size="tiny" quaternary color="#f0f1ee" @click="logout">退出</n-button>
+      <n-button v-else size="tiny" quaternary color="#f0f1ee"
+        @click="router.push({ name: 'login', query: { redirect: route.fullPath } })">登录</n-button>
     </header>
     <div class="app-main">
       <nav class="app-nav">
-        <router-link v-for="n in navs" :key="n.to" :to="n.to">{{ n.label }}</router-link>
+        <router-link v-for="n in visibleNavs" :key="n.to" :to="n.to">{{ n.label }}</router-link>
       </nav>
       <main class="app-content">
         <router-view />

@@ -8,12 +8,14 @@ import { createConsoleStream } from "../../composables/useConsoleStream.js";
 import { fmtDuration } from "../../utils/format.js";
 import OverviewTab from "../console/OverviewTab.vue";
 import ConsoleStream from "../console/ConsoleStream.vue";
+import { useAuthStore } from "../../stores/auth.js";
 
 const props = defineProps({
   loopId: { type: String, required: true },
 });
 const emit = defineEmits(["changed"]);
 const $msg = useMessage();
+const auth = useAuthStore();
 
 const loop = ref(null);
 const missing = ref(false);
@@ -76,7 +78,7 @@ async function onStop() {
         <div class="meta-line">
           耗时 <b class="mono">{{ fmtDuration(loop) }}</b>
           <span class="faint" style="margin-left: 10px">轮次 {{ loop.iterations ?? 0 }} / {{ loop.repeat_total || "∞" }}</span>
-          <n-button v-if="running" size="tiny" type="error" secondary style="margin-left: 12px" @click="onStop">
+          <n-button v-if="auth.user && running" size="tiny" type="error" secondary style="margin-left: 12px" @click="onStop">
             停止
           </n-button>
         </div>

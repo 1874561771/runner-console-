@@ -8,6 +8,7 @@
 * DELETE /api/envs/{id}                   owner|admin；有存活锁拒绝 409
 * POST   /api/lock/force-release          admin|owner → JobManager.clear_lock
 * GET/PUT /api/envs/{id}/grants           viewer/operator 授权（audit env.grant）
+* GET    /api/envs/{id}/grant-candidates  owner|admin：可授权用户（排除 owner 与 admin）
 
 env 文件存储：console_dir/<username>/<env_id>/firebox.env（environments.relpath
 相对 console_dir，即 JobManager 的锁目录约定）。删除时清目录 + env_grants CASCADE。
@@ -23,7 +24,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.common import console_dir, env_lock_view, fmt_dt
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, maybe_current_user
 from app.auth import perms
 from app.config import get_settings
 from app.core import env_files, env_lock
@@ -74,6 +75,7 @@ def _env_view(row: dict, *, include_lock: bool = True) -> dict:
         "owner_id": row.get("owner_id"),
         "owner_name": row.get("owner_name"),
         "disabled": bool(row.get("disabled")),
+        "visibility": row.get("visibility") or "private",
         "created_at": fmt_dt(row.get("created_at")),
         "updated_at": fmt_dt(row.get("updated_at")),
         "missing": env_files.missing_keys(kv, _required_keys()),
@@ -100,13 +102,16 @@ def _get_env_checked(env_id: str, user: dict, need: str = "view") -> dict:
 # ------------------------------------------------------------------ routes
 
 @router.get("/envs")
-def list_envs(user: dict = Depends(get_current_user)) -> list[dict]:
+def list_envs(user: dict | None = Depends(maybe_current_user)) -> list[dict]:
     if perms.is_admin(user):
         rows = pool.query(_ENV_SELECT + "ORDER BY e.name")
+    elif not user:
+        rows = pool.query(_ENV_SELECT + "WHERE e.visibility = 'public' ORDER BY e.name")
     else:
         rows = pool.query(
             _ENV_SELECT
-            + "WHERE e.owner_id = %s "
+            + "WHERE e.visibility IN ('authenticated', 'public') "
+              "   OR e.owner_id = %s "
               "   OR EXISTS (SELECT 1 FROM env_grants g "
               "              WHERE g.env_id = e.id AND g.user_id = %s) "
               "ORDER BY e.name",
@@ -181,6 +186,17 @@ def patch_env(
             raise HTTPException(status_code=403, detail="disabled 仅 admin 可修改")
         sets.append("disabled = %s")
         params.append(1 if body.disabled else 0)
+    if body.visibility is not None:
+        visibility = body.visibility.strip().lower()
+        if visibility not in ("private", "authenticated", "public"):
+            raise HTTPException(
+                status_code=400,
+                detail="visibility 只能是 private / authenticated / public",
+            )
+        if not perms.can_access_owner(user, row.get("owner_id")):
+            raise HTTPException(status_code=403, detail="仅环境属主或管理员可修改可见性")
+        sets.append("visibility = %s")
+        params.append(visibility)
     params.append(env_id)
     pool.execute(f"UPDATE environments SET {', '.join(sets)} WHERE id = %s", tuple(params))
     audit_dao.insert_audit(
@@ -227,6 +243,17 @@ def list_grants(env_id: str, user: dict = Depends(get_current_user)) -> list[dic
         (env_id,),
     )
     return [{**r, "created_at": fmt_dt(r.get("created_at"))} for r in rows]
+
+
+@router.get("/envs/{env_id}/grant-candidates")
+def grant_candidates(env_id: str, user: dict = Depends(get_current_user)) -> list[dict]:
+    """可被授权的用户（排除环境 owner 与 admin，二者本就有全部权限）。"""
+    row = _get_env_checked(env_id, user, need="owner")
+    return [
+        {"id": u["id"], "username": u["username"], "name": u.get("name")}
+        for u in users_dao.list_users()
+        if u["id"] != row["owner_id"] and u["role"] != "admin"
+    ]
 
 
 @router.put("/envs/{env_id}/grants")

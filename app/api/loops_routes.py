@@ -30,7 +30,7 @@ from app.api.common import (
     parse_days,
     parse_int,
 )
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, maybe_current_user
 from app.auth import perms
 from app.core import run_service
 from app.core.job_manager import (
@@ -65,7 +65,7 @@ _LOOP_STATUSES = ("running", "done", "stopped", "failed")
 # ------------------------------------------------------------------ query
 
 def _list_loop_rows(
-    user: dict,
+    user: dict | None,
     days: str | None,
     env_id: str,
     status: str,
@@ -75,8 +75,9 @@ def _list_loop_rows(
     where: list[str] = []
     params: list = []
     if not perms.is_admin(user):
-        where.append("l.owner_id = %s")
-        params.append(user["id"])
+        scope_sql, scope_params = perms.visible_scope_sql("l.owner_id", "l.env_id", user)
+        where.append(scope_sql)
+        params.extend(scope_params)
     d = parse_days(days)
     if d == "today":
         where.append("l.created_at >= CURDATE()")
@@ -196,12 +197,20 @@ def _loop_view(row: dict, jobs: list[dict], *, include_lock: bool = True) -> dic
     return out
 
 
-def _loop_or_404(loop_id: str, user: dict) -> dict:
-    """取 loop 并校验 owner/admin；404 / 403。"""
+def _loop_or_404(loop_id: str, user: dict | None, *, operate: bool = False) -> dict:
+    """取 loop 并校验权限；404 / 403。
+
+    operate=False：只读查看（owner / admin / 环境授权用户）；
+    operate=True：操作（停止等），仅 owner / admin。
+    """
     row = _get_loop_row(loop_id)
     if row is None:
         raise HTTPException(status_code=404, detail="loop not found")
-    if not perms.can_access_owner(user, row.get("owner_id")):
+    if operate:
+        ok = perms.can_access_owner(user, row.get("owner_id"))
+    else:
+        ok = perms.can_view_resource(user, row.get("owner_id"), row.get("env_id"))
+    if not ok:
         raise HTTPException(status_code=403, detail="forbidden")
     return row
 
@@ -215,7 +224,7 @@ def list_loops(
     status: str = "",
     offset: int = 0,
     limit: int = 200,
-    user: dict = Depends(get_current_user),
+    user: dict | None = Depends(maybe_current_user),
 ) -> list[dict]:
     offset = max(parse_int(offset, 0) or 0, 0)
     limit = min(max(parse_int(limit, 200) or 200, 1), 500)
@@ -225,17 +234,17 @@ def list_loops(
 
 
 @router.get("/loops/{loop_id}")
-def get_loop(loop_id: str, user: dict = Depends(get_current_user)) -> dict:
+def get_loop(loop_id: str, user: dict | None = Depends(maybe_current_user)) -> dict:
     row = _loop_or_404(loop_id, user)
     jobs = _jobs_for_loops([loop_id]).get(loop_id, [])
     return _loop_view(row, jobs)
 
 
 @router.get("/loops/{loop_id}/status")
-def get_loop_status(loop_id: str, user: dict = Depends(get_current_user)) -> dict:
+def get_loop_status(loop_id: str, user: dict | None = Depends(maybe_current_user)) -> dict:
     """轻量视图（2-5s 轮询）：与详情同构但省 env_lock 文件 IO；无权返回 {loop: null}。"""
     row = _get_loop_row(loop_id)
-    if row is None or not perms.can_access_owner(user, row.get("owner_id")):
+    if row is None or not perms.can_view_resource(user, row.get("owner_id"), row.get("env_id")):
         return {"loop": None}
     jobs = _jobs_for_loops([loop_id]).get(loop_id, [])
     return {"loop": _loop_view(row, jobs, include_lock=False)}
@@ -261,7 +270,7 @@ def run(body: RunIn, user: dict = Depends(get_current_user)) -> dict:
 
 @router.post("/loops/{loop_id}/stop")
 def stop_loop(loop_id: str, user: dict = Depends(get_current_user)) -> dict:
-    _loop_or_404(loop_id, user)
+    _loop_or_404(loop_id, user, operate=True)
     try:
         ok, message = get_job_manager().stop(loop_id, user=user)
     except LoopStopError as exc:
@@ -270,7 +279,9 @@ def stop_loop(loop_id: str, user: dict = Depends(get_current_user)) -> dict:
 
 
 @router.get("/loops/{loop_id}/live-cases")
-def loop_live_cases(loop_id: str, user: dict = Depends(get_current_user)) -> dict:
+def loop_live_cases(
+    loop_id: str, user: dict | None = Depends(maybe_current_user)
+) -> dict:
     """运行中实时解析：从 console 文本提取本轮 case 状态 + 当前 run 的材料清单。
 
     iteration 结束前的 case 结果不进 DB（ingest 在轮末才跑），但 console 里

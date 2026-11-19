@@ -87,6 +87,8 @@ const eTime = ref("08:30");       // 'HH:MM'
 const eRunAt = ref(null);         // 时间戳（n-date-picker）
 const eEnv = ref("");
 const eBranch = ref("HEAD");
+const eFwBranch = ref("");        // 固件 branch（Job setup 下载，runner --branch）
+const eFwBuild = ref("");         // 固件 build 号（留空 = 该分支最新，runner --build）
 const eMode = ref("suite");       // suite | cases
 const eSuite = ref("");
 const eSaved = ref("");           // 保存的套件 id
@@ -127,6 +129,8 @@ function openEditor(s) {
   eSaved.value = "";
   eCases.value = [...(p.cases || [])];
   eRepeat.value = p.repeat ?? 1;
+  eFwBranch.value = p.branch || "";
+  eFwBuild.value = p.build || "";
   eHeadless.value = !!p.headless;
 
   envOptions.value = envs.value.map((e) => ({
@@ -145,6 +149,11 @@ function openEditor(s) {
   editorShow.value = true;
 }
 
+function onFwBranchChange(v) {
+  eFwBranch.value = v;
+  if (!v) eFwBuild.value = "";
+}
+
 function applySaved(id) {
   const s = suites.value.find((x) => x.id === id);
   eCases.value = s ? [...s.cases] : [];
@@ -159,6 +168,7 @@ async function saveEditor() {
   if (!eEnv.value) { $msg.error("请选择环境"); return; }
   if (eMode.value === "suite" && !eSuite.value) { $msg.error("请选择 Suite"); return; }
   if (eMode.value === "cases" && !eCases.value.length) { $msg.error("请勾选至少一个 Case"); return; }
+  if (eFwBuild.value.trim() && !eFwBranch.value.trim()) { $msg.error("固件 Build 需要同时填写固件 Branch"); return; }
   const body = {
     name,
     rule_type: eRule.value,
@@ -174,6 +184,8 @@ async function saveEditor() {
       cases: eMode.value === "cases" ? [...eCases.value] : [],
       repeat: Math.max(0, Number(eRepeat.value) || 0),
       headless: eHeadless.value,
+      branch: eFwBranch.value.trim(),
+      build: eFwBuild.value.trim(),
     },
   };
   saving.value = true;
@@ -217,6 +229,7 @@ async function saveEditor() {
             {{ targetText(s.params) }} ·
             {{ s.params?.repeat === 0 ? "∞" : "×" + (s.params?.repeat || 1) }}
             <template v-if="s.params?.git_ref"> · {{ s.params.git_ref }}</template>
+            <template v-if="s.params?.branch"> · 固件 {{ s.params.branch }}<template v-if="s.params?.build">/{{ s.params.build }}</template></template>
           </td>
           <td>{{ ruleText(s) }}</td>
           <td class="mono">{{ s.enabled ? s.next_run_at || "—" : "—" }}</td>
@@ -272,8 +285,16 @@ async function saveEditor() {
       <n-form-item label="环境">
         <n-select v-model:value="eEnv" :options="envOptions" placeholder="选择环境" />
       </n-form-item>
-      <n-form-item label="分支（每次运行取该分支当时最新）">
+      <n-form-item label="分支（测试脚本仓库，每次运行取该分支当时最新）">
         <n-select v-model:value="eBranch" :options="branchOptions" />
+      </n-form-item>
+      <n-form-item label="固件 Branch / Build（Job setup 下载，可选）">
+        <div style="display: flex; gap: 8px; width: 100%">
+          <n-input v-model:value="eFwBranch" placeholder="固件 Branch，如 utm-2026_2" style="flex: 1"
+            @update:value="onFwBranchChange" />
+          <n-input v-model:value="eFwBuild" placeholder="Build 号（留空=该分支最新）" style="flex: 1"
+            :disabled="!eFwBranch" />
+        </div>
       </n-form-item>
       <n-form-item label="运行目标">
         <div style="width: 100%">

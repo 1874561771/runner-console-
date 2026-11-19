@@ -1,7 +1,7 @@
 """认证路由：POST /api/login、POST /api/logout、GET /api/me。
 
-登录模式由 config.auth.auth_mode 自动决定：
-* gitlab → body.token 走 PAT 校验；
+登录模式按请求体 mode（登录页页签）决定，未传时回落 config.auth.auth_mode：
+* gitlab → body.token 走 PAT 校验（需配置 [gitlab] gitlab_url）；
 * local  → body.username + body.password（兼容口令放在 token 字段）。
 
 登录成功种 HttpOnly Cookie（rc_session）并返回 UserOut；
@@ -26,8 +26,11 @@ router = APIRouter(prefix="/api")
 @router.post("/login", response_model=UserOut)
 def login(body: LoginIn, response: Response) -> dict:
     cfg = get_settings()
+    mode = (body.mode or cfg.auth.auth_mode or "").strip().lower()
+    if mode not in ("gitlab", "local"):
+        raise HTTPException(status_code=400, detail=f"不支持的登录方式: {mode}")
     try:
-        if cfg.auth.auth_mode == "gitlab":
+        if mode == "gitlab":
             token, user = gitlab.login(body.token or "")
         else:
             password = body.password or body.token

@@ -1,8 +1,8 @@
 <script setup>
-/* 环境：列表 + 新建/编辑 + 停用/启用 + 强制释放锁 + 删除 */
-import { ref, onMounted } from "vue";
+/* 环境：列表 + 新建/编辑 + 授权 + 停用/启用 + 强制释放锁 + 删除 */
+import { ref, computed, onMounted } from "vue";
 import {
-  NButton, NTag, NEmpty, NModal, NForm, NFormItem, NInput, NPopconfirm, useMessage,
+  NButton, NTag, NEmpty, NModal, NForm, NFormItem, NInput, NPopconfirm, NSelect, useMessage,
 } from "naive-ui";
 import { apiFetch } from "../../api/client.js";
 import { useAuthStore } from "../../stores/auth.js";
@@ -88,6 +88,89 @@ async function remove(e) {
   } catch (err) { $msg.error(err.message || "删除失败"); }
 }
 
+/* ---------- 授权（PUT 为整体替换：始终提交完整列表） ---------- */
+const LEVEL_OPTIONS = [
+  { label: "viewer（只读查看任务与报告）", value: "viewer" },
+  { label: "operator（另可发起运行、修改环境文件）", value: "operator" },
+];
+const VISIBILITY_OPTIONS = [
+  { label: "私有（仅授权用户）", value: "private" },
+  { label: "登录用户可见", value: "authenticated" },
+  { label: "公开（游客可见）", value: "public" },
+];
+const grantEnv = ref(null);
+const grantShow = ref(false);
+const grants = ref([]);          // [{user_id, username, level}]
+const candidates = ref([]);      // [{id, username, name}]
+const newUser = ref(null);
+const newLevel = ref("viewer");
+const grantSaving = ref(false);
+
+function canGrant(e) {
+  return auth.isAdmin || e.owner_id === auth.user?.id;
+}
+
+async function changeVisibility(e, visibility) {
+  try {
+    await apiFetch(`/api/envs/${e.id}`, {
+      method: "PATCH",
+      body: { visibility },
+    });
+    e.visibility = visibility;
+    $msg.success("环境可见性已更新");
+  } catch (err) { $msg.error(err.message || "更新可见性失败"); }
+}
+
+const addableUsers = computed(() => {
+  const taken = new Set(grants.value.map((g) => g.user_id));
+  return candidates.value
+    .filter((u) => !taken.has(u.id))
+    .map((u) => ({ label: u.name && u.name !== u.username ? `${u.username}（${u.name}）` : u.username, value: u.id }));
+});
+
+async function openGrants(e) {
+  grantEnv.value = e;
+  grants.value = [];
+  candidates.value = [];
+  newUser.value = null;
+  newLevel.value = "viewer";
+  grantShow.value = true;
+  try {
+    const [g, c] = await Promise.all([
+      apiFetch(`/api/envs/${e.id}/grants`),
+      apiFetch(`/api/envs/${e.id}/grant-candidates`),
+    ]);
+    grants.value = (Array.isArray(g) ? g : []).map((x) => ({
+      user_id: x.user_id, username: x.username, level: x.level,
+    }));
+    candidates.value = Array.isArray(c) ? c : [];
+  } catch (err) { $msg.error(err.message || "加载授权失败"); }
+}
+
+function addGrant() {
+  const u = candidates.value.find((x) => x.id === newUser.value);
+  if (!u) return;
+  grants.value.push({ user_id: u.id, username: u.username, level: newLevel.value });
+  newUser.value = null;
+}
+
+function removeGrant(userId) {
+  grants.value = grants.value.filter((g) => g.user_id !== userId);
+}
+
+async function saveGrants() {
+  grantSaving.value = true;
+  try {
+    await apiFetch(`/api/envs/${grantEnv.value.id}/grants`, {
+      method: "PUT",
+      body: { grants: grants.value.map((g) => ({ user_id: g.user_id, level: g.level })) },
+    });
+    $msg.success("授权已保存");
+    grantShow.value = false;
+  } catch (err) { $msg.error(err.message || "保存授权失败"); }
+  finally { grantSaving.value = false; }
+}
+
 async function releaseLock(e) {
   try {
     const d = await apiFetch("/api/lock/force-release", {
@@ -111,7 +194,7 @@ async function releaseLock(e) {
     <n-empty v-if="!envs.length && !loading" description="还没有环境——点击右上角创建第一个" style="padding: 24px 0" />
     <table v-else class="table">
       <thead>
-        <tr><th>名称</th><th>属主</th><th>状态</th><th>更新时间</th><th style="text-align:right">操作</th></tr>
+        <tr><th>名称</th><th>属主</th><th>状态</th><th>可见性</th><th>更新时间</th><th style="text-align:right">操作</th></tr>
       </thead>
       <tbody>
         <tr v-for="e in envs" :key="e.id">
@@ -123,10 +206,16 @@ async function releaseLock(e) {
           </td>
           <td class="mono">{{ e.owner_name || "" }}</td>
           <td><n-tag size="small" :type="statusOf(e).tag" :bordered="false">{{ statusOf(e).text }}</n-tag></td>
+          <td style="width: 170px">
+            <n-select v-if="canGrant(e)" :value="e.visibility || 'private'" size="tiny"
+              :options="VISIBILITY_OPTIONS" @update:value="(v) => changeVisibility(e, v)" />
+            <n-tag v-else size="small" :bordered="false">{{ e.visibility || "private" }}</n-tag>
+          </td>
           <td class="mono faint">{{ e.updated_at || "" }}</td>
           <td style="text-align: right">
             <div class="ops">
               <n-button size="tiny" @click="openEditor(e)">编辑</n-button>
+              <n-button v-if="canGrant(e)" size="tiny" @click="openGrants(e)">授权</n-button>
               <n-button v-if="auth.isAdmin" size="tiny" @click="toggle(e)">{{ e.disabled ? "启用" : "停用" }}</n-button>
               <n-popconfirm v-if="auth.isAdmin && e.lock?.held" @positive-click="releaseLock(e)">
                 <template #trigger>
@@ -167,6 +256,40 @@ async function releaseLock(e) {
         </div>
       </template>
     </n-modal>
+
+    <n-modal v-model:show="grantShow" preset="card"
+      :title="`环境授权 · ${grantEnv?.name || ''}`" style="width: 560px">
+      <p class="faint" style="font-size: 12px; margin: 0 0 10px">
+        被授权用户可在任务中心查看该环境上的全部任务与报告；属主与管理员本就有全部权限，无需授权。
+      </p>
+      <n-empty v-if="!grants.length" description="还没有授权用户" size="small" style="padding: 12px 0" />
+      <table v-else class="table" style="margin-bottom: 12px">
+        <thead><tr><th>用户</th><th>级别</th><th style="text-align:right">操作</th></tr></thead>
+        <tbody>
+          <tr v-for="g in grants" :key="g.user_id">
+            <td class="mono">{{ g.username }}</td>
+            <td style="width: 260px">
+              <n-select v-model:value="g.level" size="tiny" :options="LEVEL_OPTIONS" />
+            </td>
+            <td style="text-align: right">
+              <n-button size="tiny" type="error" secondary @click="removeGrant(g.user_id)">移除</n-button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="grant-add">
+        <n-select v-model:value="newUser" size="small" filterable clearable
+          :options="addableUsers" placeholder="选择要授权的用户" style="flex: 1" />
+        <n-select v-model:value="newLevel" size="small" :options="LEVEL_OPTIONS" style="width: 230px" />
+        <n-button size="small" :disabled="!newUser" @click="addGrant">添加</n-button>
+      </div>
+      <template #footer>
+        <div style="display: flex; justify-content: flex-end; gap: 8px">
+          <n-button @click="grantShow = false">取消</n-button>
+          <n-button type="primary" :loading="grantSaving" @click="saveGrants">保存</n-button>
+        </div>
+      </template>
+    </n-modal>
   </div>
 </template>
 
@@ -174,4 +297,5 @@ async function releaseLock(e) {
 .pane-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .pane-head .spacer { flex: 1; }
 .ops { display: inline-flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.grant-add { display: flex; gap: 8px; align-items: center; }
 </style>

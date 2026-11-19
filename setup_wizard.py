@@ -97,7 +97,15 @@ def provision_db(conn) -> str:
 
 
 def write_config(runner_pw: str) -> None:
-    workdir = ask("runner 仓库路径（runner.py 所在目录）", "D:/UIAutomation")
+    print()
+    print("  注意：下面填的是「自动化 runner」仓库路径（里面要有 runner.py），")
+    print("  不是本控制台项目路径。本控制台代码已在：")
+    print(f"    {PROJECT_ROOT}")
+    workdir = ask("自动化 runner 仓库路径（含 runner.py，如 D:/UIAutomation）", "D:/UIAutomation")
+    wd = Path(workdir)
+    if not (wd / "runner.py").is_file():
+        print(f"  警告：未在 {wd} 找到 runner.py，服务可启动，但发任务会失败。")
+        print("  请确认路径，或稍后改 config.toml 的 [paths].workdir。")
     admins = ask("管理员用户名（逗号分隔，首次登录即建号提权）", "yjwu")
     admin_list = ", ".join(f'"{a.strip()}"' for a in admins.split(",") if a.strip())
 
@@ -136,14 +144,18 @@ gitlab_insecure = false
     print(f"√ 配置已写入 {CONFIG_PATH}")
 
 
+def python_exe() -> str:
+    """Prefer project venv interpreter; fall back to current process."""
+    cand = PROJECT_ROOT / ".venv" / "Scripts" / "python.exe"
+    return str(cand if cand.is_file() else sys.executable)
+
+
 def run_migrate() -> None:
     print("√ 执行数据库迁移（幂等）…")
     import subprocess
 
-    py = PROJECT_ROOT / ".venv" / "Scripts" / "python.exe"
-    exe = str(py if py.is_file() else sys.executable)
     r = subprocess.run(
-        [exe, "-m", "app.db.migrate", "--config", "config.toml"],
+        [python_exe(), "-m", "app.db.migrate", "--config", "config.toml"],
         cwd=str(PROJECT_ROOT),
     )
     if r.returncode != 0:
@@ -175,10 +187,11 @@ def main() -> int:
         write_config(runner_pw)
 
     run_migrate()
+    py = python_exe()
     print()
     print("部署完成！启动服务：")
     print(f'  "{py}" -m uvicorn app.main:app --host 0.0.0.0 --port 8765')
-    print("或直接双击 install.bat 选启动；浏览器访问 http://<本机IP>:8765/")
+    print("或直接双击 install.bat / start_server.bat；浏览器访问 http://<本机IP>:8765/")
     return 0
 
 

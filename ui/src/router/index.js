@@ -8,12 +8,12 @@ const routes = [
     component: () => import("../layouts/MainLayout.vue"),
     children: [
       { path: "", redirect: "/console" },
-      { path: "console", name: "console", component: () => import("../views/ConsoleView.vue"), meta: { title: "运行台" } },
-      { path: "schedules", name: "schedules", component: () => import("../views/SchedulesView.vue"), meta: { title: "定时任务" } },
-      { path: "tasks", name: "tasks", component: () => import("../views/TasksView.vue"), meta: { title: "任务中心" } },
-      { path: "dashboard", name: "dashboard", component: () => import("../views/DashboardView.vue"), meta: { title: "数据看板" } },
-      { path: "resources", name: "resources", component: () => import("../views/ResourcesView.vue"), meta: { title: "资源" } },
-      { path: "admin", name: "admin", component: () => import("../views/AdminView.vue"), meta: { title: "管理", adminOnly: true } },
+      { path: "console", name: "console", component: () => import("../views/ConsoleView.vue"), meta: { title: "运行台", public: true } },
+      { path: "schedules", name: "schedules", component: () => import("../views/SchedulesView.vue"), meta: { title: "定时任务", requiresAuth: true } },
+      { path: "tasks", name: "tasks", component: () => import("../views/TasksView.vue"), meta: { title: "任务中心", public: true } },
+      { path: "dashboard", name: "dashboard", component: () => import("../views/DashboardView.vue"), meta: { title: "数据看板", requiresAuth: true } },
+      { path: "resources", name: "resources", component: () => import("../views/ResourcesView.vue"), meta: { title: "资源", requiresAuth: true } },
+      { path: "admin", name: "admin", component: () => import("../views/AdminView.vue"), meta: { title: "管理", requiresAuth: true, adminOnly: true } },
     ],
   },
   { path: "/:pathMatch(.*)*", redirect: "/console" },
@@ -37,7 +37,7 @@ export function safeRedirect(value, fallback = "/console") {
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
   if (!auth.loaded) await auth.fetchMe();
-  if (!auth.user && to.name !== "login") {
+  if (!auth.user && to.meta.requiresAuth) {
     return { name: "login", query: { redirect: to.fullPath } };
   }
   if (auth.user && to.name === "login") {

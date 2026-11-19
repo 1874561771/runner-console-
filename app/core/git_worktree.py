@@ -115,7 +115,8 @@ def list_tree_files(workdir: Path, git_ref: str, prefix: str) -> list[str]:
 
 
 def _resolve_ref(workdir: Path, git_ref: str) -> str:
-    for cand in (git_ref, "origin/" + git_ref, "refs/heads/" + git_ref):
+    # origin/<分支> 优先：fetch 只更新远端跟踪分支，本地同名分支可能早已落后。
+    for cand in ("origin/" + git_ref, git_ref, "refs/heads/" + git_ref):
         r = _run(["git", "rev-parse", "--verify", cand], cwd=workdir)
         if r.returncode == 0:
             return cand

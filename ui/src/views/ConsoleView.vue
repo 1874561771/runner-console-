@@ -6,8 +6,10 @@ import { useConsoleStore } from "../stores/consoleStore.js";
 import { apiFetch, asJson } from "../api/client.js";
 import ConfigCard from "../components/console/ConfigCard.vue";
 import DetailPanel from "../components/console/DetailPanel.vue";
+import { useAuthStore } from "../stores/auth.js";
 
 const store = useConsoleStore();
+const auth = useAuthStore();
 const message = useMessage();
 const busy = ref(false);
 let pollTimer = null;
@@ -75,7 +77,15 @@ async function pickLoop(id) {
 <template>
   <div class="rc-layout">
     <div class="rc-left">
-      <ConfigCard @run="onRun" @stop="onStop" />
+      <ConfigCard v-if="auth.user" @run="onRun" @stop="onStop" />
+      <n-card v-else title="游客只读模式" size="small">
+        <div class="faint" style="font-size: 12.5px; margin-bottom: 10px">
+          可查看公开环境的任务、完整控制台日志和测试产物。登录后可提交任务。
+        </div>
+        <n-button type="primary" size="small" @click="$router.push({ name: 'login', query: { redirect: $route.fullPath } })">
+          登录
+        </n-button>
+      </n-card>
       <n-card title="最近任务" size="small">
         <template v-if="recent.length">
           <div

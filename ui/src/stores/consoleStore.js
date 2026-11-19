@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { apiFetch, asJson } from "../api/client.js";
 import { consoleStream } from "../composables/useConsoleStream.js";
+import { useAuthStore } from "./auth.js";
 
 export { consoleStream };
 
@@ -81,6 +82,20 @@ export const useConsoleStore = defineStore("console", {
 
   actions: {
     async loadAll() {
+      const auth = useAuthStore();
+      if (!auth.user) {
+        const [envs, loops] = await Promise.all([
+          apiFetch("/api/envs", []).then(asJson).catch(() => []),
+          apiFetch("/api/loops", []).then(asJson).catch(() => []),
+        ]);
+        this.envs = Array.isArray(envs) ? envs : [];
+        this.loops = Array.isArray(loops) ? loops : [];
+        this.config = { products: [], branches: [], suites: [], tests: [] };
+        this.uploads = [];
+        this.suitesSaved = [];
+        this.loaded = true;
+        return;
+      }
       const [config, envs, uploads, loops, suitesSaved] = await Promise.all([
         apiFetch("/api/config", {}).then(asJson).catch(() => ({})),
         apiFetch("/api/envs", []).then(asJson).catch(() => []),
@@ -135,6 +150,7 @@ export const useConsoleStore = defineStore("console", {
       if (f.source === "repo" && f.targetMode === "test" && !f.test) return "请选择 Test";
       if (f.source === "repo" && f.targetMode === "cases" && !f.cases.length) return "请勾选至少一个 Case";
       if (f.source === "upload" && !f.uploadId) return "请选择我的测试";
+      if (f.fwBuild?.trim() && !f.fwBranch?.trim()) return "固件 Build 需要同时填写固件 Branch";
       return "";
     },
 

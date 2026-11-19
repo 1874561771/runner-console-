@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS environments (
     created_at  DATETIME(3)  NOT NULL,
     updated_at  DATETIME(3)  NOT NULL,
     disabled    TINYINT(1)   NOT NULL DEFAULT 0,
+    visibility  ENUM('private','authenticated','public') NOT NULL DEFAULT 'private',
     PRIMARY KEY (id),
     KEY idx_environments_owner_id (owner_id),
     CONSTRAINT fk_environments_owner

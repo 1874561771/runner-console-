@@ -4,8 +4,10 @@ import { ref, computed, onMounted } from "vue";
 import { NCard, NButton, NTag, NSelect, NEmpty, NPopconfirm, useMessage } from "naive-ui";
 import { apiFetch, asJson } from "../api/client.js";
 import Inspector from "../components/tasks/Inspector.vue";
+import { useAuthStore } from "../stores/auth.js";
 
 const $msg = useMessage();
+const auth = useAuthStore();
 
 const rows = ref([]);
 const loading = ref(true);
@@ -45,7 +47,9 @@ onMounted(async () => {
   if (!Array.isArray(envs.value)) envs.value = [];
   envOptions.value = [{ value: "", label: "全部环境" },
     ...envs.value.map((e) => ({ value: e.id, label: e.name }))];
-  stats.value = await apiFetch("/api/stats").then(asJson).catch(() => null);
+  stats.value = auth.user
+    ? await apiFetch("/api/stats").then(asJson).catch(() => null)
+    : null;
   await load();
   // 深链 /tasks?loop=<id>
   const q = new URLSearchParams(location.hash.split("?")[1] || "").get("loop");
@@ -127,7 +131,7 @@ const statCards = computed(() => {
         <span class="mono rid">{{ l.id }}</span>
         <span class="faint" style="font-size: 11.5px">{{ l.env_name || "" }} · {{ l.suite || l.test || "" }}</span>
         <span class="spacer"></span>
-        <n-popconfirm v-if="l.status === 'running'" @positive-click="onStop(l)">
+        <n-popconfirm v-if="auth.user && l.status === 'running'" @positive-click="onStop(l)">
           <template #trigger>
             <n-button size="tiny" type="error" secondary @click.stop>停止</n-button>
           </template>

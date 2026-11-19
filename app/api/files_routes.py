@@ -3,8 +3,8 @@
 要点：
 * 认证走 deps.get_current_user（Cookie rc_session 优先，<a>/<img> 等导航
   请求自动携带；Bearer 兼容脚本调试）。
-* 权限 can_access_owner（run 归属经 job/loop 的 owner；owner 为 NULL 的
-  legacy run 仅 admin 可见）。
+* 权限 can_view_resource（run 归属经 job/loop 的 owner 与环境；owner 与环境
+  都为 NULL 的 legacy run 仅 admin 可见）。
 * 路径穿越防护：resolve 后必须仍在 run 目录内。
 * Content-Type 按扩展名（summary.html 特例即 .html → text/html）。
 """
@@ -15,8 +15,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
 from app.api.common import artifacts_root
-from app.api.deps import get_current_user
+from app.api.deps import maybe_current_user
 from app.api.runs_routes import get_run_or_404
+from app.auth import perms
+from app.db import pool
 
 router = APIRouter()
 
@@ -44,15 +46,23 @@ _CONTENT_TYPES = {
 
 @router.get("/runs/{run_id}/{relpath:path}")
 def artifact_file(
-    run_id: str, relpath: str, user: dict = Depends(get_current_user)
+    run_id: str, relpath: str, user: dict | None = Depends(maybe_current_user)
 ) -> FileResponse:
     try:
         get_run_or_404(run_id, user)
     except HTTPException as exc:
         # 运行中的 run 尚未由 ingest 入库（轮末才写），但产物已在磁盘：
-        # 目录存在时放行（仍要求登录），否则维持 404/403
+        # 目录存在时，按 jobs 中已捕获的 run_id 归属做同一权限检查。
         if exc.status_code == 404 and (artifacts_root() / run_id).is_dir():
-            pass
+            job = pool.query_one(
+                "SELECT owner_id, env_id FROM jobs WHERE run_id = %s "
+                "ORDER BY started_at DESC LIMIT 1",
+                (run_id,),
+            )
+            if not job or not perms.can_view_resource(
+                user, job.get("owner_id"), job.get("env_id")
+            ):
+                raise HTTPException(status_code=403, detail="forbidden") from exc
         else:
             raise
     base = (artifacts_root() / run_id).resolve()

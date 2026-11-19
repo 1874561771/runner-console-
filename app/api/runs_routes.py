@@ -10,8 +10,8 @@
 * 数据全走 T5 dao（runs/cases/case_failures/artifact_files），不扫盘；
   列表的 outcome 过滤与 has_summary 列 dao.list_runs 未覆盖，在本模块
   用 pool 补充查询（JOIN 口径与 dao._RUNS_JOIN 一致，另加 loop 兜底归属）。
-* run 归属 = job.owner_id 优先，否则 loop.owner_id（legacy run）；
-  owner_id 为 NULL 的 run 仅 admin 可见。
+* run 归属 = job.owner_id 优先，否则 loop.owner_id（legacy run）；环境同理；
+  owner 本人、admin 与该环境的授权用户（viewer/operator/env owner）可查看。
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse, RedirectResponse
 
 from app.api.common import artifacts_root, fmt_dt, parse_int
-from app.api.deps import get_current_user
+from app.api.deps import maybe_current_user
 from app.auth import perms
 from app.db import pool
 from app.db.dao import runs as runs_dao
@@ -47,26 +47,28 @@ _RUNS_SELECT = (
 
 # ------------------------------------------------------------------ helper
 
-def run_owner_id(run_id: str) -> int | None:
-    """run 归属 owner_id；run 不存在返回 None。"""
+def run_scope(run_id: str) -> tuple[int | None, str | None]:
+    """run 归属 (owner_id, env_id)；run 不存在返回 (None, None)。"""
     row = pool.query_one(
-        "SELECT COALESCE(j.owner_id, l.owner_id) AS owner_id "
+        "SELECT COALESCE(j.owner_id, l.owner_id) AS owner_id, "
+        "COALESCE(j.env_id, l.env_id) AS env_id "
         "FROM runs r "
         "LEFT JOIN jobs j ON j.id = r.job_id "
         "LEFT JOIN loops l ON l.id = COALESCE(j.loop_id, r.loop_id) "
         "WHERE r.run_id = %s",
         (run_id,),
     )
-    return row["owner_id"] if row else None
+    return (row["owner_id"], row["env_id"]) if row else (None, None)
 
 
-def get_run_or_404(run_id: str, user: dict) -> dict:
-    """校验 run 存在且当前用户可访问（owner / admin）；404 / 403。供本模块
-    与 cases_routes / files_routes 复用。"""
+def get_run_or_404(run_id: str, user: dict | None) -> dict:
+    """校验 run 存在且当前用户可查看（owner / admin / 环境授权用户）；404 / 403。
+    供本模块与 cases_routes / files_routes 复用。"""
     row = runs_dao.get_run(run_id)
     if row is None:
         raise HTTPException(status_code=404, detail="run not found")
-    if not perms.can_access_owner(user, run_owner_id(run_id)):
+    owner_id, env_id = run_scope(run_id)
+    if not perms.can_view_resource(user, owner_id, env_id):
         raise HTTPException(status_code=403, detail="forbidden")
     return row
 
@@ -110,13 +112,16 @@ def list_runs(
     outcome: str = "",
     offset: int = 0,
     limit: int = 200,
-    user: dict = Depends(get_current_user),
+    user: dict | None = Depends(maybe_current_user),
 ) -> list[dict]:
     where: list[str] = []
     params: list = []
     if not perms.is_admin(user):
-        where.append("COALESCE(j.owner_id, l.owner_id) = %s")
-        params.append(user["id"])
+        scope_sql, scope_params = perms.visible_scope_sql(
+            "COALESCE(j.owner_id, l.owner_id)", "COALESCE(j.env_id, l.env_id)", user
+        )
+        where.append(scope_sql)
+        params.extend(scope_params)
     if loop_id:
         where.append("COALESCE(j.loop_id, r.loop_id) = %s")
         params.append(loop_id)
@@ -141,7 +146,7 @@ def list_runs(
 
 
 @router.get("/runs/{run_id}")
-def get_run(run_id: str, user: dict = Depends(get_current_user)) -> dict:
+def get_run(run_id: str, user: dict | None = Depends(maybe_current_user)) -> dict:
     get_run_or_404(run_id, user)
     row = pool.query_one(_RUNS_SELECT + "WHERE r.run_id = %s", (run_id,)) or {}
     cases = runs_dao.list_cases(run_id)
@@ -166,7 +171,7 @@ def get_run(run_id: str, user: dict = Depends(get_current_user)) -> dict:
 def run_joblog(
     run_id: str,
     tail: int = 400,
-    user: dict = Depends(get_current_user),
+    user: dict | None = Depends(maybe_current_user),
 ) -> PlainTextResponse:
     get_run_or_404(run_id, user)
     path = artifacts_root() / run_id / "job.log"
@@ -189,7 +194,7 @@ def _tail_lines(path, n: int) -> list[str]:
 
 
 @router.get("/runs/{run_id}/summary.html")
-def run_summary_html(run_id: str, user: dict = Depends(get_current_user)):
+def run_summary_html(run_id: str, user: dict | None = Depends(maybe_current_user)):
     """302 → /runs/{run_id}/summary.html（files_routes 提供）。
 
     summary.html 内的截图/case.log 引用是相对路径，浏览器按文档 URL 解析；

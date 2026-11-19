@@ -14,13 +14,15 @@ from pydantic import BaseModel
 class LoginIn(BaseModel):
     """POST /api/login 请求体。
 
-    * auth_mode = gitlab：只需 token（GitLab Personal Access Token）
-    * auth_mode = local ：username + password（兼容把口令放在 token 字段）
+    * mode = gitlab：只需 token（GitLab Personal Access Token）
+    * mode = local ：username + password（兼容把口令放在 token 字段）
+    * 未传 mode 时按 config.auth.auth_mode。
     """
 
     username: str | None = None
     password: str | None = None
     token: str | None = None
+    mode: str | None = None
 
 
 class UserOut(BaseModel):
@@ -74,11 +76,12 @@ class EnvIn(BaseModel):
 
 
 class EnvPatchIn(BaseModel):
-    """PATCH /api/envs/{id} 请求体；disabled 仅 admin 可改。"""
+    """PATCH /api/envs/{id} 请求体；disabled 仅 admin，visibility 仅 owner/admin。"""
 
     name: str | None = None
     content: str | None = None
     disabled: bool | None = None
+    visibility: str | None = None
 
 
 class EnvIdIn(BaseModel):

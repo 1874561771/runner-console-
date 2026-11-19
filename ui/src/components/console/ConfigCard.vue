@@ -197,6 +197,14 @@ async function saveSuite() {
       </div>
     </template>
 
+    <div class="grp-label">固件（Job setup 下载，可选）</div>
+    <div class="fld row">
+      <n-input v-model:value="f.fwBranch" size="small" placeholder="固件 Branch，如 utm-2026_2" style="flex: 1"
+        @update:value="(v) => { if (!v) f.fwBuild = ''; }" />
+      <n-input v-model:value="f.fwBuild" size="small" placeholder="Build 号（留空=该分支最新）" style="flex: 1"
+        :disabled="!f.fwBranch" />
+    </div>
+
     <div class="grp-label">执行</div>
     <div class="fld row">
       <div class="repeat-box">
