@@ -46,6 +46,13 @@ function targetText(p) {
 function ruleText(s) {
   return s.rule_type === "daily" ? `每天 ${s.time || ""}` : `单次 ${s.run_at || ""}`;
 }
+const healthMeta = {
+  never: { text: "未运行", type: "default" },
+  running: { text: "运行中", type: "info" },
+  healthy: { text: "健康", type: "success" },
+  warning: { text: "警告", type: "warning" },
+  unhealthy: { text: "异常", type: "error" },
+};
 
 async function toggle(s) {
   try {
@@ -209,7 +216,7 @@ async function saveEditor() {
         style="padding: 30px 0" />
       <table v-else class="table">
       <thead>
-        <tr><th>名称</th><th>运行配置</th><th>规则</th><th>下次运行</th><th>上次运行</th><th style="text-align:right">操作</th></tr>
+        <tr><th>名称</th><th>运行配置</th><th>规则</th><th>下次运行</th><th>健康状态</th><th>上次运行</th><th style="text-align:right">操作</th></tr>
       </thead>
       <tbody>
         <tr v-for="s in rows" :key="s.id">
@@ -226,6 +233,13 @@ async function saveEditor() {
           </td>
           <td>{{ ruleText(s) }}</td>
           <td class="mono">{{ s.enabled ? s.next_run_at || "—" : "—" }}</td>
+          <td>
+            <n-tag size="small" :type="healthMeta[s.health]?.type || 'default'" :bordered="false">
+              {{ healthMeta[s.health]?.text || s.health }}
+            </n-tag>
+            <div v-if="s.failure_streak" class="health-detail">连续失败 {{ s.failure_streak }} 次</div>
+            <div v-if="s.last_run_at" class="faint health-detail">{{ s.last_run_at }}</div>
+          </td>
           <td>
             <StatusTag v-if="s.last_status" :status="s.last_status" />
             <router-link v-if="s.last_loop_id" class="mono link"
@@ -331,4 +345,5 @@ async function saveEditor() {
 .ops { display: inline-flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .rule-row { display: flex; align-items: center; gap: 10px; }
 .table th, .table td { font-size: 12.5px; }
+.health-detail { font-size: 10.5px; margin-top: 2px; white-space: nowrap; }
 </style>

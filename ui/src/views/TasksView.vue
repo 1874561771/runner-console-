@@ -14,6 +14,7 @@ const rows = ref([]);
 const loading = ref(true);
 const selectedId = ref("");
 const stats = ref(null);
+const queue = ref([]);
 
 const days = ref("7");
 const status = ref("");
@@ -35,6 +36,13 @@ const statusOptions = [
   { value: "stopped", label: "已停止" },
 ];
 const envOptions = ref([]);
+const queueDisplay = computed(() => [...queue.value].sort((a, b) => {
+  if (a.status === "queued" && b.status !== "queued") return -1;
+  if (a.status !== "queued" && b.status === "queued") return 1;
+  return a.status === "queued"
+    ? String(a.created_at).localeCompare(String(b.created_at))
+    : String(b.created_at).localeCompare(String(a.created_at));
+}));
 
 onMounted(async () => {
   envs.value = await apiFetch("/api/envs").then(asJson).catch(() => []);
@@ -45,6 +53,7 @@ onMounted(async () => {
     ? await apiFetch("/api/stats").then(asJson).catch(() => null)
     : null;
   await load();
+  if (auth.user) await loadQueue();
   // 深链 /tasks?loop=<id>
   const q = new URLSearchParams(location.hash.split("?")[1] || "").get("loop");
   if (q) selectedId.value = q;
@@ -65,6 +74,21 @@ async function load() {
     }
   } catch (err) { $msg.error(err.message || "加载失败"); }
   loading.value = false;
+}
+
+async function loadQueue() {
+  try {
+    const d = await apiFetch("/api/run-queue").then(asJson);
+    queue.value = Array.isArray(d) ? d : [];
+  } catch (err) { $msg.error(err.message || "加载队列失败"); }
+}
+
+async function cancelQueue(item) {
+  try {
+    await apiFetch(`/api/run-queue/${item.id}`, { method: "DELETE" });
+    $msg.success("队列任务已取消");
+    loadQueue();
+  } catch (err) { $msg.error(err.message || "取消失败"); }
 }
 
 function onFilterChange() { load(); }
@@ -111,6 +135,23 @@ const statCards = computed(() => {
     <span class="spacer"></span>
   </div>
 
+  <n-card v-if="auth.user && queue.length" title="任务队列" size="small" class="queue-card">
+    <div v-for="item in queueDisplay.slice(0, 10)" :key="item.id" class="queue-item">
+      <span v-if="item.status === 'queued'" class="mono queue-pos">#{{ queueDisplay.filter((x) => x.status === "queued").indexOf(item) + 1 }}</span>
+      <StatusTag :status="item.status" />
+      <span class="mono">{{ item.id }}</span>
+      <span>{{ item.env_name }}</span>
+      <span class="faint">{{ item.params?.suite || item.params?.test || `${item.params?.cases?.length || 0} cases` }}</span>
+      <span class="spacer"></span>
+      <span v-if="item.note" class="faint queue-note">{{ item.note }}</span>
+      <router-link v-if="item.loop_id" :to="`/console?loop=${item.loop_id}`" class="mono link">{{ item.loop_id }}</router-link>
+      <n-popconfirm v-if="['queued', 'failed'].includes(item.status)" @positive-click="cancelQueue(item)">
+        <template #trigger><n-button size="tiny" type="error" secondary>取消</n-button></template>
+        确定取消该队列任务？
+      </n-popconfirm>
+    </div>
+  </n-card>
+
   <div class="tk-layout">
     <n-spin :show="loading">
       <n-card size="small" class="tk-list">
@@ -153,6 +194,12 @@ const statCards = computed(() => {
 .stat-k { font-size: 12px; }
 .filter-row { display: flex; gap: 10px; margin-bottom: 14px; }
 .filter-row .spacer { flex: 1; }
+.queue-card { margin-bottom: 14px; }
+.queue-item { display: flex; align-items: center; gap: 8px; min-height: 30px; font-size: 12px; }
+.queue-item .spacer { flex: 1; }
+.queue-pos { width: 28px; color: var(--accent); }
+.queue-note { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link { color: var(--accent); }
 .tk-layout { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 16px; align-items: start; }
 .tk-layout > :deep(.n-spin-container) { min-width: 0; }
 @media (max-width: 1080px) { .tk-layout { grid-template-columns: 1fr; } }

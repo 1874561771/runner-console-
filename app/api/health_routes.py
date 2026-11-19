@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.job_manager import get_job_manager
 from app.core.scheduler import get_scheduler
+from app.core.run_queue import get_run_queue_worker
 from app.db import pool
 from app.ingest.retry_worker import get_ingest_retry_worker
 
@@ -19,6 +20,7 @@ def health() -> JSONResponse:
         "database": False,
         "scheduler": get_scheduler().running,
         "ingest_retry": get_ingest_retry_worker().running,
+        "run_queue": get_run_queue_worker().running,
     }
     try:
         checks["database"] = bool(pool.query_one("SELECT 1 AS ok"))

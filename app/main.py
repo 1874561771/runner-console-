@@ -32,6 +32,7 @@ from app.api import (
     files_routes,
     health_routes,
     loops_routes,
+    queue_routes,
     runs_routes,
     schedules_routes,
     stats_routes,
@@ -44,6 +45,7 @@ from app.api import (
 from app.config import get_settings
 from app.core.instance_lock import DatabaseInstanceLock
 from app.core.job_manager import init_job_manager
+from app.core.run_queue import get_run_queue_worker
 from app.core.scheduler import get_scheduler
 from app.db import pool
 from app.ingest.retry_worker import get_ingest_retry_worker
@@ -74,6 +76,7 @@ async def lifespan(_app: FastAPI):
     instance_lock.acquire()
     logger.info("single-instance lock acquired: %s", instance_lock.name)
     ingest_worker = get_ingest_retry_worker()
+    queue_worker = get_run_queue_worker()
     try:
         # 执行引擎：JobManager 单例 + 孤儿 loop 回收（T4）
         manager = init_job_manager()
@@ -90,12 +93,14 @@ async def lifespan(_app: FastAPI):
         ).start()
         # 已结束但未入库的 jobs：启动即补偿，之后每 60s 重试
         ingest_worker.start()
+        queue_worker.start()
         # 定时任务调度器（T16）：30s 扫描到期任务，忙则排队，重启自恢复
         get_scheduler().start()
         logger.info("scheduler started (tick=30s)")
         yield
     finally:
         get_scheduler().stop()
+        queue_worker.stop()
         ingest_worker.stop()
         instance_lock.release()
 
@@ -118,6 +123,7 @@ def create_app() -> FastAPI:
     app.include_router(sse_routes.router)
     # T7 业务路由（files_routes 挂 /runs/<run_id>/<relpath>，须在静态挂载前注册）
     app.include_router(loops_routes.router)
+    app.include_router(queue_routes.router)
     app.include_router(runs_routes.router)
     app.include_router(cases_routes.router)
     app.include_router(env_routes.router)

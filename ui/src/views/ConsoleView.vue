@@ -68,6 +68,16 @@ async function onStop() {
   } catch (err) { message.error(err.message || "停止失败"); }
 }
 
+async function onQueue() {
+  busy.value = true;
+  try {
+    const d = await apiFetch("/api/run-queue", { method: "POST", body: store.runParams });
+    message.success(`已加入任务队列：${d.queue_item?.id || ""}`);
+  } catch (err) {
+    message.error(err.message || "加入队列失败");
+  } finally { busy.value = false; }
+}
+
 async function pickLoop(id) {
   try { await store.bindLoop(id); } catch (err) { message.error(err.message || "加载失败"); }
 }
@@ -81,7 +91,7 @@ async function pickLoop(id) {
   <n-spin :show="loading">
     <div class="rc-layout">
     <div class="rc-left">
-      <ConfigCard v-if="auth.user" @run="onRun" @stop="onStop" />
+      <ConfigCard v-if="auth.user" @run="onRun" @stop="onStop" @queue="onQueue" />
       <n-card v-else title="游客只读模式" size="small">
         <div class="faint" style="font-size: 12.5px; margin-bottom: 10px">
           可查看公开环境的任务、完整控制台日志和测试产物。登录后可提交任务。

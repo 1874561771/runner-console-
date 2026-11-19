@@ -90,7 +90,8 @@ class Scheduler:
                 # once 的时刻在停机期间过去了 → 标记错过并停用
                 pool.execute(
                     "UPDATE schedules SET enabled = 0, last_status = 'missed', "
-                    "last_note = %s, next_run_at = NULL WHERE id = %s",
+                    "last_note = %s, next_run_at = NULL, "
+                    "failure_streak = failure_streak + 1 WHERE id = %s",
                     (f"停机期间错过计划时间 {row['run_at']}", row["id"]),
                 )
                 logger.warning("schedule %s（once）停机期间错过，标记 missed", row["id"])
@@ -105,6 +106,7 @@ class Scheduler:
 
     # ----------------------------------------------------------------- tick
     def tick(self) -> None:
+        self._reconcile_started()
         due = pool.query(
             "SELECT * FROM schedules WHERE enabled = 1 AND next_run_at IS NOT NULL "
             "AND next_run_at <= %s",
@@ -155,8 +157,13 @@ class Scheduler:
 
         pool.execute(
             "UPDATE schedules SET last_loop_id = %s, last_status = 'started', "
-            "last_note = %s WHERE id = %s",
-            (result["loop_id"], f"已发起 loop {result['loop_id']}", sid),
+            "last_note = %s, last_run_at = %s WHERE id = %s",
+            (
+                result["loop_id"],
+                f"已发起 loop {result['loop_id']}",
+                datetime.now(),
+                sid,
+            ),
         )
         self._finish(row)
         logger.info("schedule %s(%s) 触发 → loop %s", sid, row["name"], result["loop_id"])
@@ -176,10 +183,43 @@ class Scheduler:
 
     def _mark_result(self, sid: str, *, status: str, note: str, loop_id: str | None) -> None:
         pool.execute(
-            "UPDATE schedules SET last_status = %s, last_note = %s, last_loop_id = %s "
+            "UPDATE schedules SET last_status = %s, last_note = %s, last_loop_id = %s, "
+            "last_run_at = %s, failure_streak = failure_streak + 1 "
             "WHERE id = %s",
-            (status, note[:500], loop_id, sid),
+            (status, note[:500], loop_id, datetime.now(), sid),
         )
+
+    def _reconcile_started(self) -> None:
+        """把已发起 schedule 的最终 loop 结果同步回健康状态（每个 loop 仅处理一次）。"""
+        rows = pool.query(
+            "SELECT s.id, s.last_loop_id, l.status AS loop_status, "
+            "EXISTS(SELECT 1 FROM jobs j WHERE j.loop_id = l.id "
+            "AND j.status IN ('fail','setup_fail','broken')) AS has_failed_job "
+            "FROM schedules s JOIN loops l ON l.id = s.last_loop_id "
+            "WHERE s.last_status = 'started' AND l.status <> 'running'"
+        )
+        for row in rows:
+            failed = row["loop_status"] in ("failed", "stopped") or bool(
+                row["has_failed_job"]
+            )
+            if failed:
+                status = "failed" if row["loop_status"] != "stopped" else "stopped"
+                pool.execute(
+                    "UPDATE schedules SET last_status = %s, last_note = %s, "
+                    "failure_streak = failure_streak + 1 "
+                    "WHERE id = %s AND last_status = 'started'",
+                    (
+                        status,
+                        f"loop {row['last_loop_id']} 运行结果：{status}",
+                        row["id"],
+                    ),
+                )
+            else:
+                pool.execute(
+                    "UPDATE schedules SET last_status = 'ok', last_note = %s, "
+                    "failure_streak = 0 WHERE id = %s AND last_status = 'started'",
+                    (f"loop {row['last_loop_id']} 运行成功", row["id"]),
+                )
 
 
 _scheduler: Scheduler | None = None

@@ -65,6 +65,20 @@ def _row_view(row: dict) -> dict:
     next_at = row.get("next_run_at")
     run_at = row.get("run_at")
     created = row.get("created_at")
+    streak = int(row.get("failure_streak") or 0)
+    last_status = row.get("last_status")
+    if last_status is None:
+        health = "never"
+    elif last_status == "started":
+        health = "running"
+    elif last_status == "ok":
+        health = "healthy"
+    elif streak >= 2 or last_status in ("start_error", "missed"):
+        health = "unhealthy"
+    elif streak == 1 or last_status in ("failed", "stopped"):
+        health = "warning"
+    else:
+        health = "never"
     return {
         "id": row["id"],
         "name": row["name"],
@@ -81,6 +95,9 @@ def _row_view(row: dict) -> dict:
         "last_loop_id": row.get("last_loop_id"),
         "last_status": row.get("last_status"),
         "last_note": row.get("last_note"),
+        "failure_streak": streak,
+        "last_run_at": fmt_dt(row.get("last_run_at")),
+        "health": health,
         "created_at": fmt_dt(created) if created else None,
     }
 
@@ -213,12 +230,18 @@ def run_schedule_now(sid: str, user: dict = Depends(get_current_user)) -> dict:
     try:
         result = run_service.do_start_run(user, body)
     except run_service.RunError as exc:
+        pool.execute(
+            "UPDATE schedules SET last_status = 'start_error', last_note = %s, "
+            "last_run_at = %s, failure_streak = failure_streak + 1 WHERE id = %s",
+            (exc.detail[:500], datetime.now(), sid),
+        )
         raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
     now = datetime.now()
     pool.execute(
         "UPDATE schedules SET last_loop_id = %s, last_status = 'started', "
-        "last_note = %s, next_run_at = %s WHERE id = %s",
+        "last_note = %s, last_run_at = %s, next_run_at = %s WHERE id = %s",
         (result["loop_id"], f"手动触发 loop {result['loop_id']}",
+         now,
          sched_mod.next_daily_occurrence(row["rule_time"], now)
          if row["rule_type"] == "daily" else None,
          sid),

@@ -9,7 +9,7 @@ import { useConsoleStore } from "../../stores/consoleStore.js";
 import { apiFetch } from "../../api/client.js";
 import CasePicker from "./CasePicker.vue";
 
-const emit = defineEmits(["run", "stop"]);
+const emit = defineEmits(["run", "stop", "queue"]);
 const store = useConsoleStore();
 const message = useMessage();
 const f = store.form;
@@ -101,6 +101,11 @@ function onRun() {
   emit("run");
 }
 function onStop() { emit("stop"); }
+function onQueue() {
+  const err = store.validateTarget();
+  if (err) { message.error(err); return; }
+  emit("queue");
+}
 
 async function copyCommand() {
   try {
@@ -295,6 +300,7 @@ async function saveSuite() {
 
     <div class="rc-btn-row">
       <n-button block @click="openSchedule">定时</n-button>
+      <n-button block @click="onQueue">加入队列</n-button>
     </div>
     <div class="rc-btn-row">
       <n-button v-if="!running" type="primary" block @click="onRun">RUN</n-button>

@@ -145,6 +145,87 @@ def list_runs(
     return [_run_view(r) for r in pool.query(sql, tuple(params))]
 
 
+@router.get("/run-comparisons")
+def compare_runs(
+    base_run_id: str,
+    target_run_id: str,
+    user: dict | None = Depends(maybe_current_user),
+) -> dict:
+    """比较两个 run 的指标及用例状态变化。"""
+    get_run_or_404(base_run_id, user)
+    get_run_or_404(target_run_id, user)
+    base_row = pool.query_one(_RUNS_SELECT + "WHERE r.run_id = %s", (base_run_id,))
+    target_row = pool.query_one(_RUNS_SELECT + "WHERE r.run_id = %s", (target_run_id,))
+    base_cases = {
+        (row["name"], row.get("seq") or 0): row
+        for row in runs_dao.list_cases(base_run_id)
+    }
+    target_cases = {
+        (row["name"], row.get("seq") or 0): row
+        for row in runs_dao.list_cases(target_run_id)
+    }
+    changes = {
+        "regressions": [],
+        "fixed": [],
+        "unchanged_failures": [],
+        "added": [],
+        "removed": [],
+        "other_changes": [],
+    }
+    failed_states = {"fail", "broken"}
+    for key in sorted(base_cases.keys() | target_cases.keys()):
+        base_case = base_cases.get(key)
+        target_case = target_cases.get(key)
+        item = {
+            "name": key[0],
+            "seq": key[1],
+            "base_status": base_case and base_case["status"],
+            "target_status": target_case and target_case["status"],
+            "duration_delta_s": (
+                round(
+                    float(target_case.get("duration_s") or 0)
+                    - float(base_case.get("duration_s") or 0),
+                    3,
+                )
+                if base_case and target_case
+                else None
+            ),
+        }
+        if base_case is None:
+            changes["added"].append(item)
+        elif target_case is None:
+            changes["removed"].append(item)
+        elif base_case["status"] == "pass" and target_case["status"] in failed_states:
+            changes["regressions"].append(item)
+        elif base_case["status"] in failed_states and target_case["status"] == "pass":
+            changes["fixed"].append(item)
+        elif (
+            base_case["status"] in failed_states
+            and target_case["status"] in failed_states
+        ):
+            changes["unchanged_failures"].append(item)
+        elif base_case["status"] != target_case["status"]:
+            changes["other_changes"].append(item)
+
+    def metric_delta(name: str) -> float:
+        return round(
+            float(target_row.get(name) or 0) - float(base_row.get(name) or 0), 3
+        )
+
+    return {
+        "base": _run_view(base_row),
+        "target": _run_view(target_row),
+        "delta": {
+            "pass_rate": metric_delta("pass_rate"),
+            "duration_s": metric_delta("job_duration_s"),
+            "passed": int(metric_delta("passed")),
+            "failed": int(metric_delta("failed")),
+            "broken": int(metric_delta("broken")),
+        },
+        "changes": changes,
+    }
+
+
 @router.get("/runs/{run_id}")
 def get_run(run_id: str, user: dict | None = Depends(maybe_current_user)) -> dict:
     get_run_or_404(run_id, user)

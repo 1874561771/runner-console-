@@ -327,3 +327,23 @@ CREATE TABLE IF NOT EXISTS run_templates (
     CONSTRAINT fk_run_templates_owner
         FOREIGN KEY (owner_id) REFERENCES users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- ---------------------------------------------------------------------
+-- run_queue：持久化的手动任务队列
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS run_queue (
+    id         CHAR(12)     NOT NULL,
+    owner_id   BIGINT       NOT NULL,
+    env_id     VARCHAR(64)  NOT NULL,
+    params     TEXT         NOT NULL,
+    status     ENUM('queued','starting','started','cancelled','failed') NOT NULL,
+    loop_id    VARCHAR(24)  NULL,
+    note       VARCHAR(512) NULL,
+    created_at DATETIME(3)  NOT NULL,
+    started_at DATETIME(3)  NULL,
+    PRIMARY KEY (id),
+    KEY idx_run_queue_status_created (status, created_at),
+    KEY idx_run_queue_owner_created (owner_id, created_at),
+    CONSTRAINT fk_run_queue_owner FOREIGN KEY (owner_id) REFERENCES users (id),
+    CONSTRAINT fk_run_queue_env FOREIGN KEY (env_id) REFERENCES environments (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
