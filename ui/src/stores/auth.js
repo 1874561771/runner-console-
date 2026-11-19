@@ -10,7 +10,9 @@ export const useAuthStore = defineStore("auth", {
   actions: {
     async fetchMe() {
       try {
-        const d = await apiFetch("/api/me");
+        // 首次导航由路由守卫负责跳转并保留目标地址，避免全局 401
+        // 处理器抢先跳到登录页而丢失用户原本访问的页面。
+        const d = await apiFetch("/api/me", { handleUnauthorized: false });
         this.user = d?.user || d || null;
       } catch {
         this.user = null;
@@ -35,6 +37,13 @@ export function wireUnauthorized(router) {
   setUnauthorizedHandler(() => {
     const auth = useAuthStore();
     auth.user = null;
-    if (router.currentRoute.value.name !== "login") router.push("/login");
+    auth.loaded = true;
+    const current = router.currentRoute.value;
+    if (current.name !== "login") {
+      router.replace({
+        name: "login",
+        query: { redirect: current.fullPath },
+      });
+    }
   });
 }

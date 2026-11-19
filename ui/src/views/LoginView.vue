@@ -1,10 +1,12 @@
 <script setup>
 import { ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { NCard, NTabs, NTabPane, NForm, NFormItem, NInput, NButton, useMessage } from "naive-ui";
 import { useAuthStore } from "../stores/auth.js";
+import { safeRedirect } from "../router/index.js";
 
 const router = useRouter();
+const route = useRoute();
 const auth = useAuthStore();
 const message = useMessage();
 
@@ -22,7 +24,7 @@ async function submit() {
       : { token: token.value.trim(), mode: "gitlab" };
     await auth.login(payload);
     message.success(`欢迎，${auth.displayName}`);
-    router.push("/console");
+    await router.replace(safeRedirect(route.query.redirect));
   } catch (err) {
     message.error(err.message || "登录失败");
   } finally {

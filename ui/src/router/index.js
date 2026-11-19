@@ -24,12 +24,25 @@ export const router = createRouter({
   routes,
 });
 
+export function safeRedirect(value, fallback = "/console") {
+  return typeof value === "string"
+    && value.startsWith("/")
+    && !value.startsWith("//")
+    && !value.startsWith("/login")
+    ? value
+    : fallback;
+}
+
 /* 登录守卫：首次导航先拉 /api/me */
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
   if (!auth.loaded) await auth.fetchMe();
-  if (!auth.user && to.name !== "login") return { name: "login" };
-  if (auth.user && to.name === "login") return { path: "/console" };
+  if (!auth.user && to.name !== "login") {
+    return { name: "login", query: { redirect: to.fullPath } };
+  }
+  if (auth.user && to.name === "login") {
+    return safeRedirect(to.query.redirect);
+  }
   if (to.meta.adminOnly && !auth.isAdmin) return { path: "/console" };
   return true;
 });

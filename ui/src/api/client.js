@@ -31,7 +31,7 @@ export async function apiFetch(path, opts = {}) {
     credentials: "same-origin",
   });
   if (res.status === 401) {
-    if (onUnauthorized) onUnauthorized();
+    if (opts.handleUnauthorized !== false && onUnauthorized) onUnauthorized();
     throw new ApiError(401, "未登录或会话已过期");
   }
   // 纯文本/HTML 响应（run 产物预览）直接返回 Response
