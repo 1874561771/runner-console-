@@ -3,7 +3,7 @@
 import { ref, computed } from "vue";
 import {
   NCard, NSelect, NInput, NInputNumber, NSwitch, NButton, NTabs, NTabPane,
-  NModal, NForm, NFormItem, NTimePicker, NDatePicker, useMessage,
+  NModal, NForm, NFormItem, NTimePicker, NDatePicker, NPopconfirm, useMessage,
 } from "naive-ui";
 import { useConsoleStore } from "../../stores/consoleStore.js";
 import { apiFetch } from "../../api/client.js";
@@ -34,6 +34,53 @@ const savedSuiteOptions = computed(() => [
   { value: "", label: "（手动勾选）" },
   ...store.suitesSaved.map((s) => ({ value: s.id, label: `[套件] ${s.name}（${s.cases.length} cases）` })),
 ]);
+const runTemplateOptions = computed(() => store.runTemplates.map((t) => ({
+  value: t.id, label: t.name,
+})));
+
+const templateId = ref("");
+const templateShow = ref(false);
+const templateName = ref("");
+const templateSaving = ref(false);
+
+function applyTemplate(id) {
+  templateId.value = id || "";
+  if (id && store.applyRunTemplate(id)) message.success("运行配置模板已应用");
+}
+
+function openTemplateSave() {
+  const err = store.validateTarget();
+  if (err) { message.error(err); return; }
+  templateName.value = "";
+  templateShow.value = true;
+}
+
+async function saveRunTemplate() {
+  const name = templateName.value.trim();
+  if (!name) { message.error("请输入模板名称"); return; }
+  templateSaving.value = true;
+  try {
+    const d = await apiFetch("/api/run-templates", {
+      method: "POST",
+      body: { name, run: store.runParams },
+    });
+    await store.refreshRunTemplates();
+    templateId.value = d.template?.id || "";
+    templateShow.value = false;
+    message.success(`运行配置模板「${name}」已保存`);
+  } catch (err) { message.error(err.message || "保存模板失败"); }
+  finally { templateSaving.value = false; }
+}
+
+async function deleteRunTemplate() {
+  if (!templateId.value) return;
+  try {
+    await apiFetch(`/api/run-templates/${templateId.value}`, { method: "DELETE" });
+    templateId.value = "";
+    await store.refreshRunTemplates();
+    message.success("运行配置模板已删除");
+  } catch (err) { message.error(err.message || "删除模板失败"); }
+}
 
 const targetTabs = computed({
   get: () => f.targetMode,
@@ -136,6 +183,17 @@ async function saveSuite() {
     <template #header-extra>
       <n-button size="tiny" quaternary @click="copyCommand">复制命令</n-button>
     </template>
+
+    <div class="grp-label">快速配置</div>
+    <div class="fld template-row">
+      <n-select :value="templateId" :options="runTemplateOptions" size="small"
+        clearable placeholder="选择已保存的运行配置" @update:value="applyTemplate" />
+      <n-button size="small" @click="openTemplateSave">保存当前</n-button>
+      <n-popconfirm v-if="templateId" @positive-click="deleteRunTemplate">
+        <template #trigger><n-button size="small" type="error" secondary>删除</n-button></template>
+        确定删除这个运行配置模板？
+      </n-popconfirm>
+    </div>
 
     <div class="grp-label">目标</div>
     <div class="fld">
@@ -276,6 +334,20 @@ async function saveSuite() {
         </div>
       </template>
     </n-modal>
+
+    <n-modal v-model:show="templateShow" preset="card" title="保存运行配置模板" style="width: 420px">
+      <n-form label-placement="top" size="small">
+        <n-form-item label="模板名称">
+          <n-input v-model:value="templateName" placeholder="如：每日 Regression 最新固件" @keyup.enter="saveRunTemplate" />
+        </n-form-item>
+      </n-form>
+      <template #footer>
+        <div style="display: flex; justify-content: flex-end; gap: 8px">
+          <n-button @click="templateShow = false">取消</n-button>
+          <n-button type="primary" :loading="templateSaving" @click="saveRunTemplate">保存</n-button>
+        </div>
+      </template>
+    </n-modal>
   </n-card>
 </template>
 
@@ -303,5 +375,7 @@ async function saveSuite() {
 .rc-btn-row .n-button { flex: 1; height: 36px; font-family: var(--font-mono); font-weight: 600; letter-spacing: 1.5px; text-indent: 1.5px; }
 .save-suite-row { display: flex; gap: 8px; margin-top: 8px; }
 .save-suite-row .n-input { flex: 1; }
+.template-row { display: flex; gap: 8px; }
+.template-row .n-select { flex: 1; min-width: 0; }
 .rule-row { display: flex; align-items: center; gap: 10px; }
 </style>

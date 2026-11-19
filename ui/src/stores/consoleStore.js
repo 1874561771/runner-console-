@@ -12,6 +12,7 @@ export const useConsoleStore = defineStore("console", {
     envs: [],
     uploads: [],
     suitesSaved: [],
+    runTemplates: [],
     loops: [],
     envId: "",
     form: {
@@ -93,21 +94,24 @@ export const useConsoleStore = defineStore("console", {
         this.config = { products: [], branches: [], suites: [], tests: [] };
         this.uploads = [];
         this.suitesSaved = [];
+        this.runTemplates = [];
         this.loaded = true;
         return;
       }
-      const [config, envs, uploads, loops, suitesSaved] = await Promise.all([
+      const [config, envs, uploads, loops, suitesSaved, runTemplates] = await Promise.all([
         apiFetch("/api/config", {}).then(asJson).catch(() => ({})),
         apiFetch("/api/envs", []).then(asJson).catch(() => []),
         apiFetch("/api/uploads", []).then(asJson).catch(() => []),
         apiFetch("/api/loops", []).then(asJson).catch(() => []),
         apiFetch("/api/suites", []).then(asJson).catch(() => []),
+        apiFetch("/api/run-templates", []).then(asJson).catch(() => []),
       ]);
       this.config = { products: [], branches: [], suites: [], tests: [], ...config };
       this.envs = Array.isArray(envs) ? envs : [];
       this.uploads = Array.isArray(uploads) ? uploads : [];
       this.loops = Array.isArray(loops) ? loops : [];
       this.suitesSaved = Array.isArray(suitesSaved) ? suitesSaved : [];
+      this.runTemplates = Array.isArray(runTemplates) ? runTemplates : [];
       if (!this.envId) this.envId = this.envs.find((e) => !e.disabled)?.id || "";
       if (!this.loaded) this._initFormDefaults();
       this.loaded = true;
@@ -135,6 +139,37 @@ export const useConsoleStore = defineStore("console", {
         const suites = await asJson(await apiFetch("/api/suites"));
         this.suitesSaved = Array.isArray(suites) ? suites : [];
       } catch { /* 忽略 */ }
+    },
+
+    async refreshRunTemplates() {
+      try {
+        const templates = await asJson(await apiFetch("/api/run-templates"));
+        this.runTemplates = Array.isArray(templates) ? templates : [];
+      } catch { /* 忽略 */ }
+    },
+
+    applyRunTemplate(id) {
+      const template = this.runTemplates.find((x) => x.id === id);
+      if (!template) return false;
+      const p = template.params || {};
+      const f = this.form;
+      this.envId = p.env_id || "";
+      f.product = p.product || "firebox";
+      f.source = p.source || "repo";
+      f.gitRef = p.git_ref || "HEAD";
+      f.uploadId = p.upload_id || "";
+      f.suite = p.suite || "";
+      f.test = p.test || "";
+      f.cases = [...(p.cases || [])];
+      f.targetMode = f.cases.length ? "cases" : f.test ? "test" : "suite";
+      f.headless = !!p.headless;
+      f.fwBranch = p.branch || "";
+      f.fwBuild = p.build || "";
+      f.unlimited = Number(p.repeat) === 0;
+      f.repeat = f.unlimited ? 1 : Math.max(1, Number(p.repeat) || 1);
+      f.pauseOnFail = !!p.pause_on_fail;
+      f.savedSuiteId = "";
+      return true;
     },
 
     applySavedSuite(id) {

@@ -38,6 +38,7 @@ from app.api import (
     status_routes,
     sse_routes,
     suites_routes,
+    templates_routes,
     uploads_routes,
 )
 from app.config import get_settings
@@ -128,6 +129,7 @@ def create_app() -> FastAPI:
     # T16/T17：定时任务 + 保存的套件
     app.include_router(schedules_routes.router)
     app.include_router(suites_routes.router)
+    app.include_router(templates_routes.router)
 
     # 全局 DB 异常 → 500 JSON（不向客户端泄漏 SQL 细节，完整堆栈进日志）
     @app.exception_handler(pymysql.MySQLError)
