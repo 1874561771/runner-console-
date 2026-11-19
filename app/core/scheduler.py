@@ -56,6 +56,10 @@ class Scheduler:
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
 
+    @property
+    def running(self) -> bool:
+        return bool(self._thread and self._thread.is_alive())
+
     # ------------------------------------------------------------ lifecycle
     def start(self) -> None:
         self._stop.clear()

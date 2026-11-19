@@ -80,7 +80,8 @@ def retry_pending_ingest(limit: int = 200) -> int:
     try:
         rows = pool.query(
             "SELECT j.* FROM jobs j LEFT JOIN runs r ON r.run_id = j.run_id "
-            "WHERE j.run_id IS NOT NULL AND r.run_id IS NULL "
+            "WHERE j.run_id IS NOT NULL AND j.ended_at IS NOT NULL "
+            "AND r.run_id IS NULL "
             "ORDER BY j.started_at LIMIT %s",
             (int(limit),),
         )
